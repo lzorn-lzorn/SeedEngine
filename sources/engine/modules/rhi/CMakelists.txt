@@ -1,0 +1,7 @@
+
+
+if (TARGET DXC::Compiler)
+    target_link_libraries(${Target_Name} PRIVATE DXC::Compiler)
+else()
+    message(STATUS "DXC::Compiler target not found, skipping DXC runtime link for this platform.")
+endif()
