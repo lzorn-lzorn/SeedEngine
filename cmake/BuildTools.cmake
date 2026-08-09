@@ -1,0 +1,558 @@
+include_guard(GLOBAL)
+
+# 针对 XCode 提供的用户头文件搜索路径设置函数
+function(user_header_search_paths target includes)
+  if(XCODE)
+    set(INCLUDES "")
+    foreach(INC ${includes})
+      get_filename_component(Absolute_Include_Path ${INC} ABSOLUTE)
+      string(APPEND INCLUDES " \"${Absolute_Include_Path}\"")
+    endforeach()
+    set_target_properties(${target} PROPERTIES
+      XCODE_ATTRIBUTE_USER_HEADER_SEARCH_PATHS "${INCLUDES}"
+    )
+  endif()
+endfunction()
+
+function(set_target_folder target)
+  if(IDE_GROUP_PROJECTS_IN_FOLDERS)
+    get_filename_component(FolderDir ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+    string(REPLACE ${CMAKE_SOURCE_DIR} "" FolderDir ${FolderDir})
+    if(NOT FolderDir STREQUAL "")
+      # 去掉开头的路径分隔符
+      string(REGEX REPLACE "^[/\\]+" "" FolderDir ${FolderDir})
+    endif()
+    set_target_properties(${target} PROPERTIES FOLDER "${FolderDir}")
+  endif()
+endfunction()
+
+# ! 以下方式添加外部库的方式存疑, 原本希望解决的问题是将一些编译比较慢的库仅编译一次, 
+# ! 放在 lib/<对应平台>/ 下, 之后不管是重新编译还是删除 build 目录都不用再次编译外部库
+# ! 如果是:
+# ! ```cmake
+# if (TARGET DXC::Compiler)
+#     target_link_libraries(${LibarayName}
+#         PRIVATE
+#             DXC::Compiler
+#     )
+# else()
+#     add_subdirectory(DirectXShaderCompiler)
+# endif()
+# ! ```
+# ! 这种的方式最后生成的库还是在 build 下.
+# ! 但是以下实现的问题是最后输出的 dll 和 exe 不在一个目录下, 导致 exe 运行时找不到 dll
+# ! 可能这种方式就不 work
+# @brief 
+# 	添加外部库的统一方式:
+#   add_external_module(
+#       NAME                <对外目标名>        # 最终链接时使用的目标名（支持命名空间，如 SDL3::SDL3）
+#       SOURCE_DIR          <源码根目录>        # 第三方库源码路径（相对于项目根或绝对路径）
+#       TARGET_IF_BUILT     <第三方CMake目标>   # 源码编译时，第三方库自身定义的 CMake 目标名
+#       INCLUDE_DIR         <头文件目录>        # 头文件路径，对预编译和源码编译均生效
+#       BUILD_SHARED_LIBS   <ON|OFF>           # ON：动态库  OFF：静态库
+#       [CMAKE_ARGS         <参数...>]         # 可选，传递给第三方库 CMake 的变量（如 -DSDL_DISABLE_JOYSTICK=ON）
+#   )
+#
+# @example
+#   add_external_module(
+#       NAME                SDL3::SDL3
+#       SOURCE_DIR          extern/SDL
+#       TARGET_IF_BUILT     SDL3::SDL3
+#       INCLUDE_DIR         extern/SDL/include
+#       BUILD_SHARED_LIBS   ON
+#       CMAKE_ARGS          SDL_DISABLE_JOYSTICK=ON
+#   )
+# @note 
+# 	该函数会在先在 lib/{对应平台}/ 下寻找是否有对应的库, 有则直接包一层 Interface 目标,
+# 	没有则从源码编译并生成 manifest.cmake 再次包一层 Interface 目标.
+function(add_external_module)
+    set(oneValueArgs NAME SOURCE_DIR TARGET_IF_BUILT INCLUDE_DIR BUILD_SHARED_LIBS)
+    set(multiValueArgs CMAKE_ARGS)
+    cmake_parse_arguments(ARG "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    # ----- 平台判定 -----
+    if(WIN32)
+        set(platform windows)
+    elseif(APPLE)
+        set(platform macos)
+    else()
+        set(platform linux)
+    endif()
+
+    # 确保 NAME 是合法的目录名（不能包含 '::'）
+    string(REPLACE "::" "_" safe_name "${ARG_NAME}")
+    set(lib_root   "${CMAKE_SOURCE_DIR}/lib/${platform}")
+    set(lib_dir    "${lib_root}/${safe_name}")
+    set(manifest   "${lib_dir}/manifest.cmake")
+
+    # ----- 1. 尝试读取预编译清单 -----
+    set(use_prebuilt FALSE)
+    if(EXISTS ${manifest})
+        include(${manifest})   # 期望获得 PREBUILT_VALID 等变量
+        if(PREBUILT_VALID)
+            set(use_prebuilt TRUE)
+            message(STATUS "[${ARG_NAME}] Using prebuilt library from ${lib_dir}")
+        endif()
+    endif()
+
+    # ----- 2a. 使用预编译库 -----
+    if(use_prebuilt)
+        add_library(${ARG_NAME} ${PREBUILT_TYPE} IMPORTED)
+        target_include_directories(${ARG_NAME} INTERFACE ${ARG_INCLUDE_DIR})
+
+        if(PREBUILT_TYPE STREQUAL "SHARED" AND WIN32)
+            set_target_properties(${ARG_NAME} PROPERTIES
+                IMPORTED_LOCATION "${PREBUILT_IMPORTED_LOCATION}"
+                IMPORTED_IMPLIB   "${PREBUILT_IMPORTED_IMPLIB}"
+            )
+        else()
+            set_target_properties(${ARG_NAME} PROPERTIES
+                IMPORTED_LOCATION "${PREBUILT_IMPORTED_LOCATION}"
+            )
+        endif()
+
+    # ----- 2b. 从源码构建 + 自动生成清单 -----
+    else()
+        message(STATUS "[${ARG_NAME}] Building from source: ${ARG_SOURCE_DIR}")
+
+        if(NOT TARGET ${ARG_TARGET_IF_BUILT})
+            set(BUILD_SHARED_LIBS ${ARG_BUILD_SHARED_LIBS} CACHE BOOL "" FORCE)
+            add_subdirectory(${ARG_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/${safe_name}_build)
+        endif()
+
+        set(internal_target ${ARG_TARGET_IF_BUILT})
+        if(TARGET ${internal_target})
+            # 将输出重定向到 lib/<平台>/<安全名>/
+            set_target_properties(${internal_target} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY "${lib_dir}"
+                ARCHIVE_OUTPUT_DIRECTORY "${lib_dir}"
+                LIBRARY_OUTPUT_DIRECTORY "${lib_dir}"
+            )
+
+            # 确定外部生成脚本的位置（与本函数文件同目录）
+            set(gen_manifest_script "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/GenerateManifest.cmake")
+            if(NOT EXISTS "${gen_manifest_script}")
+                message(FATAL_ERROR "GenerateManifest.cmake not found at ${gen_manifest_script}")
+            endif()
+
+            add_custom_command(TARGET ${internal_target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -P "${gen_manifest_script}"
+                    -D "lib_dir=${lib_dir}"
+                    -D "manifest=${manifest}"
+                    -D "is_shared=${ARG_BUILD_SHARED_LIBS}"
+                COMMENT "Generating manifest for ${ARG_NAME}"
+            )
+        endif()
+
+        # 创建接口目标，对外提供统一名称
+        add_library(${ARG_NAME} INTERFACE)
+        target_link_libraries(${ARG_NAME} INTERFACE ${internal_target})
+        target_include_directories(${ARG_NAME} INTERFACE ${ARG_INCLUDE_DIR})
+    endif()
+endfunction()
+
+# 根据 REQUIRED 决定报错或警告
+function(_prebuilt_error msg required)
+    if(required)
+        message(FATAL_ERROR "[ARG_NAME] ${msg} in ${ARG_LIB_DIR}")
+    else()
+        message(WARNING "[ARG_NAME] ${msg}, target not created")
+    endif()
+endfunction()
+
+# internal_source_group - 为指定目标创建与文件系统目录对应的 IDE 源文件树
+#   使用 source_group(TREE ...) 自动将 SOURCES 按相对路径分组
+#   通常以 CMAKE_CURRENT_SOURCE_DIR 为根目录，您也可以指定自定义根
+function(internal_source_group target)
+    # 获取目标的源文件列表（仅直接添加的，不含生成器表达式）
+    get_target_property(sources ${target} SOURCES)
+    if(NOT sources)
+        return()
+    endif()
+
+    # 确定树根目录：默认为当前源目录，也可通过参数传入
+    set(tree_root ${CMAKE_CURRENT_SOURCE_DIR})
+    if(ARGC GREATER 1)
+        set(tree_root ${ARGV1})
+    endif()
+
+    # 仅当树根是绝对路径时执行（避免相对路径问题）
+    if(IS_ABSOLUTE ${tree_root})
+        source_group(TREE ${tree_root} FILES ${sources})
+    endif()
+endfunction()
+
+
+# @brief
+#   add_internal_module(<name>
+#       TYPE      <STATIC|SHARED|OBJECT|INTERFACE>   # 可选, 默认 STATIC
+#       SOURCES   <src1> [<src2> ...]                # 源文件列表(接口库不填写)
+#       INCLUDES  <inc1> [<inc2> ...]                # PUBLIC 头文件路径, 告诉调用者如何找到我的头文件
+#       PRIVATE_INCLUDES   <inc1> [<inc2> ...]       # PRIVATE 头文件路径, 内部依赖了哪些头文件
+#       PUBLIC_DEPENDENCY  <target1> [<target2> ...] # 对外传递的依赖 (一般情况不用传递自己的内部依赖)
+#       PRIVATE_DEPENDENCY <target1> [<target2> ...] # 不对外传递的依赖
+#       ALIAS              <alias_name>              # 可选, 创建别名目标
+#   )
+# @example
+# add_internal_module(Renderer
+#     TYPE                STATIC
+#     SOURCES             src/renderer.cpp
+#     INCLUDES            include/renderer        # 公开头文件
+#     PRIVATE_INCLUDES    src/renderer/private    # 内部头文件
+#     PUBLIC_DEPENDENCY   EngineCore              # 依赖 EngineCore，且对外传导
+#     ALIAS               Renderer::Impl
+# )
+# 使用者：
+#   target_link_libraries(MyApp PRIVATE Renderer::Impl)
+#   自动获得 include/renderer 路径，也能间接获得 EngineCore 的头文件
+function(add_internal_module name)
+    set(options "")
+    set(oneValueArgs TYPE ALIAS)
+    set(multiValueArgs SOURCES INCLUDES PRIVATE_INCLUDES
+                      PUBLIC_DEPENDENCY PRIVATE_DEPENDENCY)
+    cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    # 默认类型
+    if(NOT ARG_TYPE)
+        set(ARG_TYPE STATIC)
+    endif()
+
+    if(ARG_TYPE STREQUAL "INTERFACE")
+        if(ARG_SOURCES)
+            message(FATAL_ERROR "add_internal_module: INTERFACE library ${name} cannot have SOURCES")
+        endif()
+        add_library(${name} INTERFACE)
+    else()
+        if(NOT ARG_SOURCES)
+            message(FATAL_ERROR "add_internal_module: non-INTERFACE library ${name} requires SOURCES")
+        endif()
+        add_library(${name} ${ARG_TYPE} ${ARG_SOURCES})
+    endif()
+
+    if(ARG_ALIAS)
+        if(TARGET ${ARG_ALIAS})
+            message(FATAL_ERROR "add_internal_module: ALIAS ${ARG_ALIAS} already exists")
+        endif()
+        add_library(${ARG_ALIAS} ALIAS ${name})
+    endif()
+
+    # 调用用户自定义配置函数(假设已存在)
+    if(COMMAND seed_configure_target)
+        seed_configure_target(${name})
+    endif()
+
+    if(ARG_INCLUDES)
+        if(ARG_TYPE STREQUAL "INTERFACE")
+            target_include_directories(${name} INTERFACE ${ARG_INCLUDES})
+        else()
+            target_include_directories(${name} PUBLIC ${ARG_INCLUDES})
+        endif()
+    endif()
+
+    if(ARG_PRIVATE_INCLUDES)
+        if(ARG_TYPE STREQUAL "INTERFACE")
+            message(WARNING "add_internal_module: INTERFACE library ${name} cannot have PRIVATE_INCLUDES, ignored")
+        else()
+            target_include_directories(${name} PRIVATE ${ARG_PRIVATE_INCLUDES})
+        endif()
+    endif()
+
+    if(ARG_PUBLIC_DEPENDENCY)
+        if(ARG_TYPE STREQUAL "INTERFACE")
+            target_link_libraries(${name} INTERFACE ${ARG_PUBLIC_DEPENDENCY})
+        else()
+            target_link_libraries(${name} PUBLIC ${ARG_PUBLIC_DEPENDENCY})
+        endif()
+    endif()
+
+    if(ARG_PRIVATE_DEPENDENCY)
+        if(ARG_TYPE STREQUAL "INTERFACE")
+            message(FATAL_ERROR "add_internal_module: INTERFACE library ${name} cannot have PRIVATE_DEPENDENCY")
+        endif()
+        target_link_libraries(${name} PRIVATE ${ARG_PRIVATE_DEPENDENCY})
+    endif()
+
+    if(NOT ARG_TYPE STREQUAL "OBJECT" AND NOT ARG_TYPE STREQUAL "INTERFACE")
+        # 对静态库增加 multiplicity，允许环形引用中的多次定义
+        set_property(TARGET ${name} APPEND PROPERTY
+                     LINK_INTERFACE_MULTIPLICITY 3)
+    endif()
+
+	set_target_folder(${name})
+
+    if(NOT ARG_TYPE STREQUAL "INTERFACE")
+        internal_source_group(${name} "${ARG_SOURCES}")
+        # 检查重复源文件
+        list_assert_duplicates("${ARG_SOURCES}")
+    endif()
+
+    # 检查重复包含路径
+    if(ARG_INCLUDES)
+		user_header_search_paths(${name} "${ARG_INCLUDES}")
+        list_assert_duplicates("${ARG_INCLUDES}")
+    endif()
+
+    # 全局注册模块名称
+    set_property(GLOBAL APPEND PROPERTY INTERNAL_MODULES_LIST ${name})
+endfunction()
+
+
+macro(remove_c_flag flag)
+
+  foreach(f ${ARGV})
+    string(REGEX REPLACE ${f} "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+    string(REGEX REPLACE ${f} "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+    string(REGEX REPLACE ${f} "" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+    string(REGEX REPLACE ${f} "" CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL}")
+    string(REGEX REPLACE ${f} "" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+  endforeach()
+  unset(f)
+endmacro()
+
+macro(remove_cxx_flag flag)
+  foreach(f ${ARGV})
+    string(REGEX REPLACE ${f} "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    string(REGEX REPLACE ${f} "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+    string(REGEX REPLACE ${f} "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+    string(REGEX REPLACE ${f} "" CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL}")
+    string(REGEX REPLACE ${f} "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+  endforeach()
+  unset(f)
+endmacro()
+
+macro(remove_c_and_cxx_flag flag)
+  remove_c_flag(${ARGV})
+  remove_cxx_flag(${ARGV})
+endmacro()
+
+macro(add_c_flag flag)
+
+  string(APPEND CMAKE_C_FLAGS " ${flag}")
+endmacro()
+
+macro(add_cxx_flag flag)
+  string(APPEND CMAKE_CXX_FLAGS " ${flag}")
+endmacro()
+
+macro(add_c_and_cxx_flag flag)
+  add_c_flag("${flag}")
+  add_cxx_flag("${flag}")
+endmacro()
+
+macro(add_c_flag_per_config flag)
+  string(APPEND CMAKE_C_FLAGS_DEBUG " ${flag}")
+  string(APPEND CMAKE_C_FLAGS_RELEASE " ${flag}")
+  string(APPEND CMAKE_C_FLAGS_MINSIZEREL " ${flag}")
+  string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " ${flag}")
+endmacro()
+
+macro(add_cxx_flag_per_config flag)
+  string(APPEND CMAKE_CXX_FLAGS_DEBUG " ${flag}")
+  string(APPEND CMAKE_CXX_FLAGS_RELEASE " ${flag}")
+  string(APPEND CMAKE_CXX_FLAGS_MINSIZEREL " ${flag}")
+  string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " ${flag}")
+endmacro()
+
+macro(remove_strict_flags)
+  if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    remove_c_and_cxx_flag(
+      "-Wstrict-prototypes"
+      "-Wsuggest-attribute=format"
+      "-Wmissing-prototypes"
+      "-Wmissing-declarations"
+      "-Wmissing-format-attribute"
+      "-Wunused-local-typedefs"
+      "-Wunused-macros"
+      "-Wunused-parameter"
+      "-Wwrite-strings"
+      "-Wredundant-decls"
+      "-Wundef"
+      "-Wshadow"
+      "-Wdouble-promotion"
+      "-Wold-style-definition"
+      "-Wextra"
+      "-Werror=[^ ]+"
+      "-Werror"
+    )
+
+    # negate flags implied by '-Wall'
+    add_c_flag("${C_REMOVE_STRICT_FLAGS}")
+    add_cxx_flag("${CXX_REMOVE_STRICT_FLAGS}")
+    add_c_and_cxx_flag("${C_AND_CXX_REMOVE_STRICT_FLAGS}")
+  endif()
+
+  if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    remove_c_and_cxx_flag(
+      "-Wunused-parameter"
+      "-Wunused-variable"
+      "-Werror=[^ ]+"
+      "-Werror"
+    )
+
+    # negate flags implied by '-Wall'
+    add_c_flag("${C_REMOVE_STRICT_FLAGS}")
+    add_cxx_flag("${CXX_REMOVE_STRICT_FLAGS}")
+    add_c_and_cxx_flag("${C_AND_CXX_REMOVE_STRICT_FLAGS}")
+  endif()
+
+  if(MSVC)
+    add_cxx_flag(
+      # Warning C5038: data member 'foo' will be initialized after data member 'bar'.
+      "/wd5038"
+    )
+    remove_c_and_cxx_flag(
+      # Restore warn C4100 (unreferenced formal parameter) back to w4.
+      "/w34100"
+      # Restore warn C4189 (unused variable) back to w4.
+      "/w34189"
+    )
+  endif()
+
+endmacro()
+
+macro(remove_extra_strict_flags)
+  if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    remove_c_and_cxx_flag(
+      "-Wunused-parameter"
+    )
+  endif()
+
+  if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    remove_c_and_cxx_flag(
+      "-Wunused-parameter"
+    )
+  endif()
+
+  if(MSVC)
+    remove_c_and_cxx_flag(
+      # Restore warn C4100 (unreferenced formal parameter) back to w4.
+      "/w34100"
+    )
+  endif()
+endmacro()
+
+function(remove_strict_c_flags_file filenames)
+  foreach(SOURCE ${ARGV})
+    if((CMAKE_C_COMPILER_ID STREQUAL "GNU") OR
+       (CMAKE_C_COMPILER_ID MATCHES "Clang"))
+      set_source_files_properties(
+        ${SOURCE} PROPERTIES
+        COMPILE_FLAGS "${C_REMOVE_STRICT_FLAGS} ${C_AND_CXX_REMOVE_STRICT_FLAGS}"
+      )
+    endif()
+    if(MSVC)
+    	set_source_files_properties(${SOURCE} PROPERTIES
+			COMPILE_FLAGS "${MSVC_C_RELAX_FLAGS} ${MSVC_COMMON_RELAX_FLAGS}"
+		)
+    endif()
+  endforeach()
+endfunction()
+
+function(remove_strict_cxx_flags_file filenames)
+  foreach(SOURCE ${ARGV})
+    if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR
+       (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+      set_source_files_properties(
+        ${SOURCE} PROPERTIES
+        COMPILE_FLAGS "${CXX_REMOVE_STRICT_FLAGS} ${C_AND_CXX_REMOVE_STRICT_FLAGS}"
+      )
+    endif()
+    if(MSVC)
+    	set_source_files_properties(${SOURCE} PROPERTIES
+			COMPILE_FLAGS "${MSVC_C_RELAX_FLAGS} ${MSVC_COMMON_RELAX_FLAGS}"
+		)
+    endif()
+  endforeach()
+endfunction()
+
+# External libs may need 'signed char' to be default.
+macro(remove_c_and_cxx_flag_unsigned_char)
+  if((CMAKE_C_COMPILER_ID STREQUAL "GNU") OR
+     (CMAKE_C_COMPILER_ID MATCHES "Clang") OR
+     (CMAKE_C_COMPILER_ID STREQUAL "Intel"))
+    remove_c_and_cxx_flag("-funsigned-char")
+  elseif(MSVC)
+    remove_c_and_cxx_flag("/J")
+  else()
+    message(WARNING
+      "Compiler '${CMAKE_C_COMPILER_ID}' failed to disable 'unsigned char' flag."
+      "Build files need updating."
+    )
+  endif()
+endmacro()
+
+function(add_check_c_compiler_flag_impl
+  _CFLAGS
+  _CACHE_VAR
+  _FLAG
+  )
+
+  include(CheckCCompilerFlag)
+
+  set(_is_new TRUE)
+  if(DEFINED CACHE{${_CACHE_VAR}})
+    set(_is_new FALSE)
+  endif()
+
+  check_c_compiler_flag("${_FLAG}" "${_CACHE_VAR}")
+  if(${_CACHE_VAR})
+    # message(STATUS "Using CFLAG: ${_FLAG}")
+    set(${_CFLAGS} "${${_CFLAGS}} ${_FLAG}" PARENT_SCOPE)
+  else()
+    if(_is_new)
+      message(STATUS "Unsupported CFLAG: ${_FLAG}")
+    endif()
+  endif()
+endfunction()
+
+function(add_check_cxx_compiler_flag_impl
+  _CXXFLAGS
+  _CACHE_VAR
+  _FLAG
+  )
+
+  include(CheckCXXCompilerFlag)
+
+  set(_is_new TRUE)
+  if(DEFINED CACHE{${_CACHE_VAR}})
+    set(_is_new FALSE)
+  endif()
+
+  check_cxx_compiler_flag("${_FLAG}" "${_CACHE_VAR}")
+  if(${_CACHE_VAR})
+    # message(STATUS "Using CXXFLAG: ${_FLAG}")
+    set(${_CXXFLAGS} "${${_CXXFLAGS}} ${_FLAG}" PARENT_SCOPE)
+  else()
+    if(_is_new)
+      message(STATUS "Unsupported CXXFLAG: ${_FLAG}")
+    endif()
+  endif()
+endfunction()
+
+function(ADD_CHECK_C_COMPILER_FLAGS _CFLAGS)
+  # Iterate over pairs & check each.
+  set(cache_var "")
+  foreach(arg ${ARGN})
+    if(cache_var)
+      add_check_c_compiler_flag_impl("${_CFLAGS}" "${cache_var}" "${arg}")
+      set(cache_var "")
+    else()
+      set(cache_var "${arg}")
+    endif()
+  endforeach()
+  set(${_CFLAGS} "${${_CFLAGS}}" PARENT_SCOPE)
+endfunction()
+
+function(ADD_CHECK_CXX_COMPILER_FLAGS _CXXFLAGS)
+  # Iterate over pairs & check each.
+  set(cache_var "")
+  foreach(arg ${ARGN})
+    if(cache_var)
+      add_check_cxx_compiler_flag_impl("${_CXXFLAGS}" "${cache_var}" "${arg}")
+      set(cache_var "")
+    else()
+      set(cache_var "${arg}")
+    endif()
+  endforeach()
+  set(${_CXXFLAGS} "${${_CXXFLAGS}}" PARENT_SCOPE)
+endfunction()
