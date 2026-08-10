@@ -11,4 +11,5 @@ add_internal_module(Application
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
     PRIVATE_DEPENDENCY  SDL3::SDL3
+    ALIAS               Module::Application
 )

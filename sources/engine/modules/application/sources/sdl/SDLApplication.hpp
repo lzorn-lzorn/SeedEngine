@@ -3,6 +3,7 @@
 #include <string_view>
 #include <memory>
 #include <string>
+#include <chrono>
 
 #include <SDL3/SDL.h>
 #include "Application.hpp"
@@ -13,7 +14,7 @@ namespace app::details
 class SDLApplication final
 {
 public:
-	static std::expected<std::unique_ptr<SDLApplication>, std::string> create();
+	static std::expected<std::unique_ptr<SDLApplication>, std::string> create(std::string_view Title, int Width, int Height, bool IsResizable = true, bool IsFullScreen = false);
 
 public:
 	SDLApplication();
@@ -24,25 +25,28 @@ public:
 	SDLApplication& operator=(const SDLApplication&) = delete;
 	SDLApplication& operator=(SDLApplication&&) = delete;
 
-	void tick();
-private:
+	bool initialize(std::string_view Title, int Width, int Height
+		, bool IsResizable, bool IsFullScreen, std::string& OutError);
 
-	void initialize(std::string_view Title, int Width, int Height
-		, SDL_WindowFlags WindowFlags, std::string& OutError);
-	void shutdown();
 	void run();
-	void pollEvents();
 
+	SDLApplication& setTargetFPS(int32_t FPS);
+protected:
+	virtual void handleEvent(const SDL_Event& Event);
+	virtual void handleRender() {}
+	virtual void handleQuit() {}
+	virtual void tick(float DeltaTime);
 private:
 	using WindowUniquePtr = std::unique_ptr<SDL_Window, 
-		decltype([](SDL_Window* W) { SDL_DestroyWindow(W); })>;
+		/* Deleter */ decltype([](SDL_Window* W) { SDL_DestroyWindow(W); })>;
 	
 	using RendererUniquePtr = std::unique_ptr<SDL_Renderer, 
-		decltype([](SDL_Renderer* R) { SDL_DestroyRenderer(R); })>;
+		/* Deleter */ decltype([](SDL_Renderer* R) { SDL_DestroyRenderer(R); })>;
 
 	WindowUniquePtr Window;
 	RendererUniquePtr Renderer;
 	bool IsRunning = false;
+	std::chrono::duration<float> TargetFrameDuration { };
 };	
 
 }
