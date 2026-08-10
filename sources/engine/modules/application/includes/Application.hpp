@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 namespace app
 {
 
@@ -129,5 +130,9 @@ public:
 	~Application();
 
 	void tick(float DeltaTime);
+
+private:
+	class Impl;
+	std::unique_ptr<Impl> Inner;
 };
 }
