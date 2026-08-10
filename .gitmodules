@@ -1,0 +1,17 @@
+
+[submodule "extern/SDL"]
+	path = extern/SDL
+	url = https://github.com/libsdl-org/SDL.git
+	branch = main
+[submodule "extern/json"]
+	path = extern/json
+	url = https://github.com/nlohmann/json.git
+	branch = main
+[submodule "extern/SPIRV-Reflect"]
+	path = extern/SPIRV-Reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect.git
+	branch = main
+[submodule "extern/DirectXShaderCompiler"]
+	path = extern/DirectXShaderCompiler
+	url = https://github.com/microsoft/DirectXShaderCompiler.git
+	branch = main

@@ -160,6 +160,19 @@ function(_prebuilt_error msg required)
     endif()
 endfunction()
 
+# 确保传入的 CMake 列表中没有重复项。
+function(list_assert_duplicates values)
+  set(items ${values})
+  set(unique_items ${items})
+  list(REMOVE_DUPLICATES unique_items)
+
+  list(LENGTH items item_count)
+  list(LENGTH unique_items unique_item_count)
+  if(NOT item_count EQUAL unique_item_count)
+    message(FATAL_ERROR "Duplicate entries found in list: ${items}")
+  endif()
+endfunction()
+
 # internal_source_group - 为指定目标创建与文件系统目录对应的 IDE 源文件树
 #   使用 source_group(TREE ...) 自动将 SOURCES 按相对路径分组
 #   通常以 CMAKE_CURRENT_SOURCE_DIR 为根目录，您也可以指定自定义根
@@ -281,7 +294,7 @@ function(add_internal_module name)
 	set_target_folder(${name})
 
     if(NOT ARG_TYPE STREQUAL "INTERFACE")
-        internal_source_group(${name} "${ARG_SOURCES}")
+    internal_source_group(${name})
         # 检查重复源文件
         list_assert_duplicates("${ARG_SOURCES}")
     endif()

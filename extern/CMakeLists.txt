@@ -22,7 +22,7 @@ if (TARGET DXC::Compiler)
             DXC::Compiler
     )
 else()
-    add_subdirectory(DirectXShaderCompiler)
+    # add_subdirectory(DirectXShaderCompiler)
 endif()
 
 remove_strict_flags()
