@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.31)
 
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # 开启以优化 IDE 体验
 option(IDE_GROUP_SOURCES_IN_FOLDERS "Group source files by directory in IDE" ON)
 option(IDE_GROUP_PROJECTS_IN_FOLDERS "Group CMake targets into virtual folders by path" ON)
@@ -9,3 +14,8 @@ project(SEED
     DESCRIPTION "SEED"
     VERSION 0.1.0
 )
+
+include(cmake/BuildTools.cmake)
+
+add_subdirectory(sources)
+add_subdirectory(extern)
