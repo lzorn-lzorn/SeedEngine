@@ -14,7 +14,14 @@
 
 add_subdirectory(SDL)
 add_subdirectory(json) # 对于 nlohmann json 库, 实际上有 head-only 版本
+
+set(SPIRV_REFLECT_EXECUTABLE OFF) # 禁止构建 SPIRV-Reflect 的 examples
 add_subdirectory(SPIRV-Reflect)
+# 这里 SPIRV-Reflect 的 examples 有一个 common.cpp 其会导致 clangd 和项目
+# 里的 core/common/Common.hpp 错误被 clangd 配对用于静态分析, 但是项目本身
+# 是基于 C++23 的, 而 SPIRV-Reflect 的 common.cpp 是基于 C++14 的, 所以 
+# clangd 在 Common.hpp 中会按照 C++14 来分析内部所有的头文件, 进而报错
+
 
 if (TARGET DXC::Compiler)
     target_link_libraries(${LibarayName}
