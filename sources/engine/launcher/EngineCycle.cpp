@@ -1,6 +1,11 @@
 #include "EngineCycle.hpp"
+#include "Application.hpp"
 
-void EngineCycle::preinitialize() {}
+void EngineCycle::preinitialize() 
+{
+	app::Application::self();
+
+}
 void EngineCycle::initialize() {}
 void EngineCycle::postinitialize() {}
 void EngineCycle::run() {}

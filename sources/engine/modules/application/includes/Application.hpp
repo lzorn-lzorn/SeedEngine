@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 namespace app
 {
 
@@ -11,7 +12,6 @@ enum class EAppEvent : uint32_t
 	None = 0x00,
 // App 事件
 	Quit = 0x100,               // App 退出
-    Close,			    // App 关闭
 	Termination,        // App 终止
     AppFirstEvent = Quit,
 	AppLastEvent = Termination,
@@ -123,16 +123,24 @@ enum class EAppEvent : uint32_t
 
 };
 
-class Application
+class Application final
 {
 public:
-	Application();
+	static Application& self()
+	{
+		static Application instance;
+		return instance;
+	}
 	~Application();
 
+	void initialize(std::string_view Title, int Width, int Height, bool Fullscreen, bool VSync);
 	void tick(float DeltaTime);
 
+
 private:
-	class Impl;
-	std::unique_ptr<Impl> Inner;
+	Application();
+private:
+	class AppImpl;
+	std::unique_ptr<AppImpl> Impl;
 };
 }

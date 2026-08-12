@@ -1,8 +1,10 @@
 set(SOURCES_LIST
     sources/Application.cpp
+    sources/GenericApplication.cpp
     sources/sdl/SDLApplication.cpp
     sources/sdl/SDLApplication.hpp
     includes/Application.hpp
+    includes/GenericApplication.hpp
 )
 
 add_internal_module(Application

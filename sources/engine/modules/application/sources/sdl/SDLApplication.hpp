@@ -21,9 +21,9 @@ public:
 	~SDLApplication();
 
 	SDLApplication(const SDLApplication&) = delete;
-	SDLApplication(SDLApplication&&) = delete;
+	SDLApplication(SDLApplication&&) = default;
 	SDLApplication& operator=(const SDLApplication&) = delete;
-	SDLApplication& operator=(SDLApplication&&) = delete;
+	SDLApplication& operator=(SDLApplication&&) = default;
 
 	bool initialize(std::string_view Title, int Width, int Height
 		, bool IsResizable, bool IsFullScreen, std::string& OutError);
@@ -31,11 +31,10 @@ public:
 	void run();
 
 	SDLApplication& setTargetFPS(int32_t FPS);
-protected:
-	virtual void handleEvent(const SDL_Event& Event);
-	virtual void handleRender() {}
-	virtual void handleQuit() {}
-	virtual void tick(float DeltaTime);
+	void handleEvent(const SDL_Event& Event);
+	void handleRender() {}
+	void handleQuit() {}
+	void tick(float DeltaTime);
 private:
 	using WindowUniquePtr = std::unique_ptr<SDL_Window, 
 		/* Deleter */ decltype([](SDL_Window* W) { SDL_DestroyWindow(W); })>;
