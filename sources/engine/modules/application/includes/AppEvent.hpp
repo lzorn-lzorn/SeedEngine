@@ -137,20 +137,15 @@ enum class EKeyType : std::int16_t
 
 enum class EKeyModifierType : uint16_t
 {
-	None         = 0,
-	LeftShift    = 1 << 0,
-	RightShift   = 1 << 1,
-	LeftControl  = 1 << 2,
-	RightControl = 1 << 3,
-	LeftAlt      = 1 << 4,
-	RightAlt     = 1 << 5,
-	LeftCommand  = 1 << 6,
-	RightCommand = 1 << 7,
-	LeftOption   = 1 << 8,
-	RightOption  = 1 << 9,
-	CapsLock     = 1 << 10,
-	NumLock      = 1 << 11,
-	Fn           = 1 << 12,
+	None    = 0,
+	Shift    = 1 << 0,
+	Control  = 1 << 1,
+	Alt      = 1 << 2,
+	Command  = 1 << 3,
+	Option   = 1 << 4,
+	CapsLock = 1 << 5,
+	NumLock  = 1 << 6,
+	Fn       = 1 << 7,
 };
 
 using EKeyModifier = core::wrappers::Flags<EKeyModifierType>;
