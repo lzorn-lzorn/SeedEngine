@@ -1,8 +1,11 @@
 #pragma once
-
+#include <cstdint>
+#include <math/Vector.hpp>
+#include <wrappers/Flag.hpp>
 namespace app
 {
-
+using WindowId_t = std::uint64_t;
+using InputDeviceId_t = std::uint64_t;
 enum class EAppEvent
 {
 	None = 0x00,
@@ -94,4 +97,82 @@ enum class EAppEvent
 
 	Count
 };
+enum class EKeyType : std::int16_t
+{
+	None = 0,
+	A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+	Digit_One, Digit_Two, Digit_Three, Digit_Four, Digit_Five, Digit_Six, Digit_Seven, 
+	Digit_Eight, Digit_Nine, Digit_Zero,
+	Num_One, Num_Two, Num_Three, Num_Four, Num_Five, Num_Six, Num_Seven, 
+	Num_Eight, Num_Nine, Num_Zero, Num_Div, Num_Mul, Num_Sub, Num_Add, Num_Decimal, Num_Enter,
+	F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, ESC, 
+	BackQuote, /* ~ 键 */
+	Backsapce,
+	Tab,
+	LeftShift, RightShift,
+	LeftControl, RightControl,
+	LeftAlt, RightAlt,
+	LeftOption, RightOption,
+	LeftCommand, RightCommand,
+	LeftFn, RightFn,
+	LeftBracket, /* [ 键 */
+	RightBracket, /* ] 键 */
+	Semicolon, /* ; 键 */
+	Apostrophe, /* ' 键 */
+	Enter,
+	Backslash, /* \ 键 */
+	Comma, /* , 键 */
+	Period, /* . 键 */
+	Slash, /* / 键 */
+	Minus, /* - 键 */
+	Equals,  /* = 键 */
+	Space,
+	Menu, /* Win 右Ctrl 之间*/
+	Win,
+	PrintScreen, ScrollLock, PauseBreak,
+	Insert, Home, PageUp, 
+	Delete, End, PageDown,
+	Up, Down, Left, Right,
+};
+
+enum class EKeyModifierType : uint16_t
+{
+	None         = 0,
+	LeftShift    = 1 << 0,
+	RightShift   = 1 << 1,
+	LeftControl  = 1 << 2,
+	RightControl = 1 << 3,
+	LeftAlt      = 1 << 4,
+	RightAlt     = 1 << 5,
+	LeftCommand  = 1 << 6,
+	RightCommand = 1 << 7,
+	LeftOption   = 1 << 8,
+	RightOption  = 1 << 9,
+	CapsLock     = 1 << 10,
+	NumLock      = 1 << 11,
+	Fn           = 1 << 12,
+};
+
+using EKeyModifier = core::wrappers::Flags<EKeyModifierType>;
+
+enum class EMouseButton : uint8_t
+{
+	None,
+	Left, // 鼠标左键
+	Right, // 鼠标右键
+	Middle, // 鼠标中键
+	Thumb01, // 拇指侧键1
+	Thumb02  // 拇指侧键2
+};
+
+struct KeyEvent
+{
+	WindowId_t WindowId;
+	InputDeviceId_t DeviceId;
+
+
+	EKeyModifier Modifiers;
+	bool IsRepeat;
+};
+
 }

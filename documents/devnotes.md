@@ -20,7 +20,9 @@ enum class State {
 
 大驼峰的含义是一个名词, 表示一个具体实体. 而变量, 类型均是一个实体. 对于局部变量使用下划
 线是因为要将局部变量和函数形参做区分. 同样地, 在类内使用的 `using value_type = xxx` 也
-是为了和由外部指定的 `template<typename ValueType>` 进行区分, 顺便和标准库保持一致
+是为了和由外部指定的 `template<typename ValueType>` 进行区分, 顺便和标准库保持一致.
+如果在全局或者整个命名空间均定义了类型例如 `using WindowId_t = uint64_t;`, 使用 `_t`
+后缀来防止和变量名重名
 
 ```Cpp
 template <typename Ty>

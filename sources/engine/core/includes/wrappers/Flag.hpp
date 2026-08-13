@@ -16,6 +16,7 @@ struct Flags {
     explicit constexpr Flags(underlying V) noexcept : Value(V) {}
 
     constexpr Flags operator|(Flags Other) const noexcept { return Flags(Value | Other.Value); }
+    constexpr Flags operator^(Flags Other) const noexcept { return Flags(Value ^ Other.Value); }
     constexpr Flags operator&(Flags Other) const noexcept { return Flags(Value & Other.Value); }
     constexpr Flags operator~() const noexcept { return Flags(~Value); }
 
@@ -45,4 +46,51 @@ template<enum_flag EnumType>
 constexpr Flags<EnumType> operator|(Flags<EnumType> Lhs, EnumType Rhs) noexcept {
     return Lhs | Flags<EnumType>(Rhs);
 }
+// 枚举 & 枚举
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator&(EnumType Lhs, EnumType Rhs) noexcept {
+    return Flags<EnumType>(Lhs) & Rhs;
+}
+
+// 枚举 & Flags
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator&(EnumType Lhs, Flags<EnumType> Rhs) noexcept {
+    return Flags<EnumType>(Lhs) & Rhs;
+}
+
+// Flags & 枚举
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator&(Flags<EnumType> Lhs, EnumType Rhs) noexcept {
+    return Lhs & Flags<EnumType>(Rhs);
+}
+// 枚举 ^ 枚举
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator^(EnumType Lhs, EnumType Rhs) noexcept {
+    return Flags<EnumType>(Lhs) ^ Rhs;
+}
+
+// 枚举 ^ Flags
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator^(EnumType Lhs, Flags<EnumType> Rhs) noexcept {
+    return Flags<EnumType>(Lhs) ^ Rhs;
+}
+
+// Flags ^ 枚举
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator^(Flags<EnumType> Lhs, EnumType Rhs) noexcept {
+    return Lhs ^ Flags<EnumType>(Rhs);
+}
+
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator~(Flags<EnumType> Other) noexcept {
+    return ~Other;
+}
+
+
+template<enum_flag EnumType>
+constexpr Flags<EnumType> operator~(EnumType Other) noexcept {
+    return ~Flags<EnumType>(Other);
+}
+
+
 }
