@@ -1,11 +1,9 @@
 #pragma once
-#include <cstdint>
 #include <math/Vector.hpp>
 #include <wrappers/Flag.hpp>
+#include <AppCommon.hpp>
 namespace app
 {
-using WindowId_t = std::uint64_t;
-using InputDeviceId_t = std::uint64_t;
 enum class EAppEvent
 {
 	None = 0x00,
@@ -97,6 +95,15 @@ enum class EAppEvent
 
 	Count
 };
+
+enum class EEventReply : std::uint8_t
+{
+	None = 0,
+	Ignore, // 忽略事件
+    Handled,
+	Stop,   // 停止事件传递
+};
+
 enum class EKeyType : std::int16_t
 {
 	None = 0,
@@ -135,6 +142,12 @@ enum class EKeyType : std::int16_t
 	Up, Down, Left, Right,
 };
 
+enum class EKeyActionType : uint8_t
+{
+	None,
+	KeyDown, // 键盘按下
+	KeyUp,   // 键盘抬起
+};
 enum class EKeyModifierType : uint16_t
 {
 	None    = 0,
@@ -150,24 +163,46 @@ enum class EKeyModifierType : uint16_t
 
 using EKeyModifier = core::wrappers::Flags<EKeyModifierType>;
 
-enum class EMouseButton : uint8_t
+
+// 键盘事件
+struct KeyEvent
 {
-	None,
+	WindowId_t WindowId;
+	InputDeviceId_t DeviceId;
+
+	EKeyType PhysicalKey;
+	EKeyActionType KeyAction;
+	EKeyModifier Modifiers;
+	bool IsRepeat;
+};
+
+enum class EMouseType : uint16_t
+{
+	None = 0,
 	Left, // 鼠标左键
 	Right, // 鼠标右键
 	Middle, // 鼠标中键
 	Thumb01, // 拇指侧键1
 	Thumb02  // 拇指侧键2
 };
-
-struct KeyEvent
+enum class EMouseActionType : uint8_t
+{
+	None,
+	MouseDown, // 鼠标按下
+	MouseUp,   // 鼠标抬起
+	MouseMotion, // 鼠标移动
+	MouseWheel,  // 鼠标滚轮
+};
+// 鼠标事件
+struct MouseEvent
 {
 	WindowId_t WindowId;
 	InputDeviceId_t DeviceId;
 
-
-	EKeyModifier Modifiers;
-	bool IsRepeat;
+	EMouseActionType MouseAction;
+	EMouseType MouseButton;
+	core::math::Vec1i Position;
+	float WheelDelta;
+	uint8_t ClickedCount;
 };
-
 }
