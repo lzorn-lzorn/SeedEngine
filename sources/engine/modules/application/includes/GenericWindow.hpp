@@ -18,7 +18,7 @@ enum class EWindowType : uint8_t
 struct WindowDescriptor
 {
 	std::string Title;
-	core::math::Vec1i LeftTopPoint;
+	core::math::Vec2i LeftTopPoint;
 	int Width, Height;
 
 	bool IsResizable;
@@ -31,7 +31,7 @@ class IGenericWindow
 {
 public:
 	IGenericWindow() = default;
-	~IGenericWindow() = default;
+	virtual ~IGenericWindow() = default;
 
 	[[nodiscard]] virtual WindowId_t getWindowId() = 0;
 
@@ -45,8 +45,8 @@ public:
 	virtual void setSize(int32_t Width, int32_t Height) = 0;
 	virtual void setWindowType(EWindowType Type) = 0;
 
-	[[nodiscard]] virtual core::math::Vec1i getPosition() = 0;
-	[[nodiscard]] virtual core::math::Vec1i getSize() = 0;
+	[[nodiscard]] virtual core::math::Vec2i getPosition() = 0;
+	[[nodiscard]] virtual core::math::Vec2i getSize() = 0;
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 };
 

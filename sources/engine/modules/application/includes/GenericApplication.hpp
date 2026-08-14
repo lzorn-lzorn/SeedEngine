@@ -24,6 +24,9 @@ public:
 
 	[[nodiscard]] virtual std::shared_ptr<IApplicationMessageHandler> 
 	getMessageHandler() const = 0;
+
+	virtual void setCapture(const GenericWindowPointer& Window) = 0;
+	virtual void releaseCapture() = 0;
 };
 
 using GenericWindowPointer = std::shared_ptr<IGenericWindow>;

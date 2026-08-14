@@ -1,21 +1,23 @@
 #pragma once 
-#include <expected>
+
+
 #include <string_view>
 #include <memory>
 #include <string>
-#include <chrono>
+#include <flat_map>
 
 #include <SDL3/SDL.h>
-#include "Application.hpp"
+#include <GenericApplication.hpp>
+#include <GenericWindow.hpp>
+#include <ApplicationMessageHandler.hpp>
+#include <sdl/SDLWindow.hpp>
+#include <AppCommon.hpp>
 
 namespace app::details
 {
 
-class SDLApplication final
+class SDLApplication final : public IGenericApplication
 {
-public:
-	static std::expected<std::unique_ptr<SDLApplication>, std::string> create(std::string_view Title, int Width, int Height, bool IsResizable = true, bool IsFullScreen = false);
-
 public:
 	SDLApplication();
 	~SDLApplication();
@@ -25,27 +27,40 @@ public:
 	SDLApplication& operator=(const SDLApplication&) = delete;
 	SDLApplication& operator=(SDLApplication&&) = default;
 
-	bool initialize(std::string_view Title, int Width, int Height
-		, bool IsResizable, bool IsFullScreen, std::string& OutError);
+	[[nodiscard]] GenericWindowPointer 
+	makeWindow(const WindowDescriptor& Descriptor) override;
 
-	void run();
+	// 从事件循环中取出事件并翻译为底层平台的事件
+	void pumpMessages() override;
 
+	void processDeferredEvents() override {}
+	void tick(float DeltaTime) override {}
+
+	void setMessageHandler(std::shared_ptr<IApplicationMessageHandler> Handler) override;
+
+	[[nodiscard]] std::shared_ptr<IApplicationMessageHandler> 
+	getMessageHandler() const override;
+
+	void setCapture(const GenericWindowPointer& Window) override;
+	void releaseCapture() override;
+
+
+private:
 	SDLApplication& setTargetFPS(int32_t FPS);
 	void handleEvent(const SDL_Event& Event);
-	void handleRender() {}
-	void handleQuit() {}
-	void tick(float DeltaTime);
-private:
-	using WindowUniquePtr = std::unique_ptr<SDL_Window, 
-		/* Deleter */ decltype([](SDL_Window* W) { SDL_DestroyWindow(W); })>;
 	
-	using RendererUniquePtr = std::unique_ptr<SDL_Renderer, 
-		/* Deleter */ decltype([](SDL_Renderer* R) { SDL_DestroyRenderer(R); })>;
+	[[nodiscard]] 
+	GenericWindowPointer findWindow(SDL_WindowID Id) const;
 
-	WindowUniquePtr Window;
-	RendererUniquePtr Renderer;
-	bool IsRunning = false;
-	std::chrono::duration<float> TargetFrameDuration { };
+	[[nodiscard]]
+	static EKeyModifierType translateModifiers(SDL_Keymod Modifiers);
+
+	[[nodiscard]]
+	static EMouseType translateMouseButton(uint8_t Button);
+
+private:
+	std::shared_ptr<IApplicationMessageHandler> MessageHandler;
+	std::flat_map<WindowId_t, std::weak_ptr<SDLWindow>> Windows;
 };	
 
 }
