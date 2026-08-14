@@ -1,3 +1,5 @@
+#include "SDL3/SDL_events.h"
+#include "SDL3/SDL_oldnames.h"
 #include <memory>
 #include <expected>
 #include <string>
@@ -84,6 +86,79 @@ void SDLApplication::handleEvent(const SDL_Event& Event)
 	{
 	case SDL_EVENT_QUIT:
 		// Handle quit event
+		break;
+	case SDL_EVENT_TERMINATING:
+		MessageHandler->onAppTermination();
+		break;
+	case SDL_EVENT_LOCALE_CHANGED:
+		MessageHandler->onLocaleChanged();
+		break;
+	case SDL_EVENT_SYSTEM_THEME_CHANGED:
+		MessageHandler->onThemeChanged();
+		break;
+	case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+		MessageHandler->onWindowClose();
+		break;
+	case SDL_EVENT_WINDOW_MOVED:
+		MessageHandler->onWindowMotion();
+		break;
+	case SDL_EVENT_WINDOW_RESIZED:
+		MessageHandler->onWindowResize();
+	case SDL_EVENT_WINDOW_MINIMIZED:
+		MessageHandler->onWindowMinimized();
+		break;
+	case SDL_EVENT_WINDOW_MAXIMIZED:
+		MessageHandler->onWindowMaximized();
+		break;
+	case SDL_EVENT_WINDOW_HIDDEN:
+		MessageHandler->onWindowHide();
+		break;
+	case SDL_EVENT_WINDOW_RESTORED:
+		MessageHandler->onWindowRestored();
+		break;
+	case SDL_EVENT_WINDOW_MOUSE_ENTER:
+		MessageHandler->onMouseEnter();
+		break;
+	case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+		MessageHandler->onMouseLeave();
+		break;
+	case SDL_EVENT_WINDOW_FOCUS_GAINED:
+		MessageHandler->onMouseFocusGained();
+		break;
+	case SDL_EVENT_WINDOW_FOCUS_LOST:
+		MessageHandler->onMouseFocusLost();
+	case SDL_EVENT_KEY_DOWN:
+		MessageHandler->onKeyDown();
+		break;
+	case SDL_EVENT_KEY_UP:
+		MessageHandler->onKeyUp();
+		break;
+	case SDL_EVENT_TEXT_INPUT:
+		MessageHandler->onTextInput();
+		break;
+	case SDL_EVENT_TEXT_EDITING:
+		MessageHandler->onTextEdit();
+		break;
+	case SDL_EVENT_MOUSE_MOTION:
+		MessageHandler->onMouseMotion();
+		break;
+	case SDL_EVENT_MOUSE_WHEEL:
+		MessageHandler->onMouseWheel();
+		break;
+	case SDL_EVENT_MOUSE_BUTTON_UP:
+		MessageHandler->onMouseUp();
+		break;
+	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+		MessageHandler->onMouseDown();
+		break;
+	case SDL_EVENT_DROP_BEGIN:
+		MessageHandler->onDropBegin();
+		break;
+	case SDL_EVENT_DROP_COMPLETE:
+		MessageHandler->onDropEnd();
+		break;
+	case SDL_EVENT_DROP_FILE:
+		MessageHandler->onDropFile();
 		break;
 	default:
 		break;
