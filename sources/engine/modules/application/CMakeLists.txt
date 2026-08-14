@@ -1,10 +1,7 @@
-set(SOURCES_LIST
-    sources/Application.cpp
-    sources/GenericApplication.cpp
-    sources/sdl/SDLApplication.cpp
-    sources/sdl/SDLApplication.hpp
-    includes/Application.hpp
-    includes/GenericApplication.hpp
+file(GLOB_RECURSE SOURCES_LIST
+    ${CMAKE_CURRENT_SOURCE_DIR}/sources/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sources/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
 )
 
 add_internal_module(Application
