@@ -1,5 +1,4 @@
 #include "SDL3/SDL_events.h"
-#include "SDL3/SDL_oldnames.h"
 #include <memory>
 #include <expected>
 #include <string>
@@ -19,8 +18,8 @@ constexpr int32_t YieldThresholdValue = 1; // 1 millisecond
 namespace app::details
 {
 
-[[nodiscard]] GenericWindowPointer 
-SDLApplication::makeWindow(const WindowDescriptor& Descriptor) 
+[[nodiscard]] ui::GenericWindowPointer 
+SDLApplication::makeWindow(const ui::WindowDescriptor& Descriptor) 
 {
 	SDL_WindowFlags flags = 0;
 	if (Descriptor.IsResizable) flags |= SDL_WINDOW_RESIZABLE;
@@ -165,17 +164,17 @@ void SDLApplication::handleEvent(const SDL_Event& Event)
 	}
 }
 
-void SDLApplication::setMessageHandler(std::shared_ptr<IApplicationMessageHandler> Handler)
+void SDLApplication::setMessageHandler(std::shared_ptr<ui::IApplicationMessageHandler> Handler)
 {
 	MessageHandler = std::move(Handler);
 }
 
-std::shared_ptr<IApplicationMessageHandler> SDLApplication::getMessageHandler() const
+std::shared_ptr<ui::IApplicationMessageHandler> SDLApplication::getMessageHandler() const
 {
 	return MessageHandler;
 }
 
-GenericWindowPointer SDLApplication::findWindow(SDL_WindowID Id) const
+ui::GenericWindowPointer SDLApplication::findWindow(SDL_WindowID Id) const
 {
 	auto it = Windows.find(Id);
 	if (it != Windows.end())

@@ -1,10 +1,11 @@
 #pragma once
 #include <math/Vector.hpp>
 #include <wrappers/Flag.hpp>
-#include <AppCommon.hpp>
-namespace app
+
+#include <ui_core/UICommon.hpp>
+namespace ui
 {
-enum class EAppEvent
+enum class EUIEvent
 {
 	None = 0x00,
 // App 事件

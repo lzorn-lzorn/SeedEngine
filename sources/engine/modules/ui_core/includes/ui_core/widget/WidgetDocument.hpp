@@ -1,9 +1,11 @@
+#pragma once
+
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "UICommon.hpp"
-
+#include <ui_core/UICommon.hpp>
+#include <ui_core/widget/WidgetCommon.hpp>
 namespace ui
 {
 

@@ -1,10 +1,10 @@
 #pragma once
 
-#include <AppCommon.hpp>
-#include <GenericWindow.hpp>
-#include <AppEvent.hpp>
+#include <ui_core/UICommon.hpp>
+#include <ui_core/window/GenericWindow.hpp>
+#include <ui_core/event/UIEvent.hpp>
 
-namespace app
+namespace ui
 {
 
 class IApplicationMessageHandler

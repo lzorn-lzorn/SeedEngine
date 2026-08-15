@@ -961,6 +961,7 @@ public:
 	{
 		// TODO: Bug
         //return LinearColor4D(LinearColor3D::fromRGBE(RGBE), 1.0f);
+        return LinearColor4D(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
     /**

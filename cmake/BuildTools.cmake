@@ -230,6 +230,7 @@ function(add_internal_module name)
         set(ARG_TYPE STATIC)
     endif()
 
+    # 创建库
     if(ARG_TYPE STREQUAL "INTERFACE")
         if(ARG_SOURCES)
             message(FATAL_ERROR "add_internal_module: INTERFACE library ${name} cannot have SOURCES")
@@ -242,6 +243,7 @@ function(add_internal_module name)
         add_library(${name} ${ARG_TYPE} ${ARG_SOURCES})
     endif()
 
+    # 别名
     if(ARG_ALIAS)
         if(TARGET ${ARG_ALIAS})
             message(FATAL_ERROR "add_internal_module: ALIAS ${ARG_ALIAS} already exists")
@@ -249,11 +251,13 @@ function(add_internal_module name)
         add_library(${ARG_ALIAS} ALIAS ${name})
     endif()
 
-    # 调用用户自定义配置函数(假设已存在)
+    # 用户自定义配置（尽量放在 include 设置之前，避免覆盖）
     if(COMMAND seed_configure_target)
         seed_configure_target(${name})
     endif()
 
+    # ---------- 设置包含目录 ----------
+    # 1. PUBLIC 头文件路径
     if(ARG_INCLUDES)
         if(ARG_TYPE STREQUAL "INTERFACE")
             target_include_directories(${name} INTERFACE ${ARG_INCLUDES})
@@ -262,14 +266,24 @@ function(add_internal_module name)
         endif()
     endif()
 
+    # 2. PRIVATE 头文件路径（仅用于编译本目标的源文件）
     if(ARG_PRIVATE_INCLUDES)
         if(ARG_TYPE STREQUAL "INTERFACE")
             message(WARNING "add_internal_module: INTERFACE library ${name} cannot have PRIVATE_INCLUDES, ignored")
         else()
-            target_include_directories(${name} PRIVATE ${ARG_PRIVATE_INCLUDES})
+            # 转换为绝对路径（避免相对路径问题）
+            set(abs_private_includes "")
+            foreach(inc ${ARG_PRIVATE_INCLUDES})
+                get_filename_component(abs_inc "${inc}" ABSOLUTE)
+                list(APPEND abs_private_includes "${abs_inc}")
+            endforeach()
+            target_include_directories(${name} PRIVATE ${abs_private_includes})
+            # 调试输出（可移除）
+            message(STATUS "Module ${name} PRIVATE includes: ${abs_private_includes}")
         endif()
     endif()
 
+    # ---------- 依赖 ----------
     if(ARG_PUBLIC_DEPENDENCY)
         if(ARG_TYPE STREQUAL "INTERFACE")
             target_link_libraries(${name} INTERFACE ${ARG_PUBLIC_DEPENDENCY})
@@ -285,30 +299,26 @@ function(add_internal_module name)
         target_link_libraries(${name} PRIVATE ${ARG_PRIVATE_DEPENDENCY})
     endif()
 
+    # 其他属性设置...
     if(NOT ARG_TYPE STREQUAL "OBJECT" AND NOT ARG_TYPE STREQUAL "INTERFACE")
-        # 对静态库增加 multiplicity，允许环形引用中的多次定义
         set_property(TARGET ${name} APPEND PROPERTY
                      LINK_INTERFACE_MULTIPLICITY 3)
     endif()
 
-	set_target_folder(${name})
+    set_target_folder(${name})
 
     if(NOT ARG_TYPE STREQUAL "INTERFACE")
-    internal_source_group(${name})
-        # 检查重复源文件
+        internal_source_group(${name})
         list_assert_duplicates("${ARG_SOURCES}")
     endif()
 
-    # 检查重复包含路径
     if(ARG_INCLUDES)
-		user_header_search_paths(${name} "${ARG_INCLUDES}")
+        user_header_search_paths(${name} "${ARG_INCLUDES}")
         list_assert_duplicates("${ARG_INCLUDES}")
     endif()
 
-    # 全局注册模块名称
     set_property(GLOBAL APPEND PROPERTY INTERNAL_MODULES_LIST ${name})
 endfunction()
-
 
 macro(remove_c_flag flag)
 

@@ -4,18 +4,18 @@
 #include <cstdint>
 #include <memory>
 #include <string_view>
-#include <AppCommon.hpp>
-#include <GenericApplication.hpp>
+#include <ui_core/UICommon.hpp>
+#include <ui_core/GenericApplication.hpp>
 namespace app
 {
 
 
 class Application final
-	: public IApplicationMessageHandler
+	: public ui::IApplicationMessageHandler
 	, std::enable_shared_from_this<Application>
 {
 public:
-	static std::shared_ptr<Application> create(GenericWindowPointer PlatformRelatedWindow);
+	static std::shared_ptr<Application> create(ui::GenericWindowPointer PlatformRelatedWindow);
 
 	~Application();
 
@@ -32,7 +32,7 @@ private:
 
 	void initialize();
 private:
-	GenericWindowPointer PlatformRelatedWindow;
+	ui::GenericWindowPointer PlatformRelatedWindow;
 	bool bExitRequested = false;
 };
 }

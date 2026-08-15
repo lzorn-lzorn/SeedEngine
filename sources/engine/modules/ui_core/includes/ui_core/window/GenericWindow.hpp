@@ -3,9 +3,13 @@
 #include <memory>
 #include <string>
 #include <memory>
+
 #include <math/Vector.hpp>
-#include <AppCommon.hpp>
-namespace app
+
+#include "../UICommon.hpp"
+
+
+namespace ui
 {
 
 enum class EWindowType : uint8_t
@@ -45,8 +49,8 @@ public:
 	virtual void setSize(int32_t Width, int32_t Height) = 0;
 	virtual void setWindowType(EWindowType Type) = 0;
 
-	[[nodiscard]] virtual core::math::Vec2i getPosition() = 0;
-	[[nodiscard]] virtual core::math::Vec2i getSize() = 0;
+	[[nodiscard]] virtual UIVector getPosition() = 0;
+	[[nodiscard]] virtual UIVector getSize() = 0;
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 };
 

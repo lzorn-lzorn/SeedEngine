@@ -1,24 +1,14 @@
-
+#pragma once
 #include <cstdint>
-#include <math/MathCommon.hpp>
-#include <math/Vector.hpp>
-#include <math/Color.hpp>
 #include <string>
 #include <unordered_map>
 #include <variant>
 
+#include <math/MathCommon.hpp>
+
+#include <ui_core/UICommon.hpp>
 namespace ui
 {
-
-struct UISize_t
-{
-	int32_t Width;
-	int32_t Height;
-};
-
-using UIVector = core::math::Vec2i;
-using UIColor = core::math::LinearColor4D;
-
 struct LayoutConstraints
 {
 	UISize_t Minimum;

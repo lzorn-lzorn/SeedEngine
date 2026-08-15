@@ -9,6 +9,6 @@ add_internal_module(Application
     SOURCES             ${SOURCES_LIST}
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
-    PRIVATE_DEPENDENCY  SDL3::SDL3 Core::Core
+    PRIVATE_DEPENDENCY  SDL3::SDL3 Core::Core Module::UICore
     ALIAS               Module::Application
 )
