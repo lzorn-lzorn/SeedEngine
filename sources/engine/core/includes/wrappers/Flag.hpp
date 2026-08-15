@@ -8,6 +8,7 @@ concept enum_flag = std::is_enum_v<EnumType> && std::is_unsigned_v<std::underlyi
 
 template<enum_flag EnumType>
 struct Flags {
+    using enum_type = EnumType;
     using underlying = std::underlying_type_t<EnumType>;
     underlying Value = 0;
 

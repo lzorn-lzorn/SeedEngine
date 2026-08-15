@@ -14,7 +14,9 @@ concept arithmetic = std::integral<Number> || std::floating_point<Number>;
 
 inline constexpr float Epsilon = std::numeric_limits<float>::epsilon();
 inline constexpr float Tiny = 1.0e-5f;
-inline constexpr float Infinity = std::numeric_limits<float>::infinity();
+
+template <typename NumType>
+inline constexpr NumType Infinity = std::numeric_limits<NumType>::infinity();
 inline constexpr float NaN = std::numeric_limits<float>::quiet_NaN();
 inline constexpr float Pi = std::numbers::pi_v<float>;
 inline constexpr float SquareRootOfPi = 1.7724538509055160273f;
