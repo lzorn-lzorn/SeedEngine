@@ -84,7 +84,16 @@ add_internal_module(UICore
 #include <ui_core/event/Event.hpp>
 ```
 才能成功引入 UICore 下的 `Event.hpp`. 拥有更好的可读性, 同时对于模块内部, 例如 UICore
-内部, 也推荐使用 `<>` 而不是 `""` 来指定路径
+内部, 也推荐使用 `""` 而不是 `<>` 来指定路径, 两者功能没有太大区别, 主要是用于区分内部
+外部模块
+
+> [include]
+> 对于 `#include ""` 和 `#include <>` 的区别, 实际上两者的功能并无太大区别:
+> `#include ""` 会先以当前目录为起点开始找, 然后在从 CMake 中 `target_include_directories`
+> 中指定的路径开始寻找, 最后从系统目录找.
+> `#include <>` 会跳过当前目前直接从 CMake 中指定的 `target_include_directories` 中
+> 寻找, 如果强行使用, 例如 `#include <Common.hpp>` 实际上 Common.hpp 在上一级目录, 
+> 构建器也能找到, 但是抛出警告.
 
 # 项目结构
 sources/engine 是引擎的核心模块, 其分成以下结构

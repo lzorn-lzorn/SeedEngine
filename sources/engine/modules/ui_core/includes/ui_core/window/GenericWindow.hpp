@@ -4,9 +4,9 @@
 #include <string>
 #include <memory>
 
-#include <math/Vector.hpp>
+#include <core/math/Vector.hpp>
 
-#include "../UICommon.hpp"
+#include "ui_core/UICommon.hpp"
 
 
 namespace ui

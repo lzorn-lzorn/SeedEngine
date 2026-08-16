@@ -1,8 +1,8 @@
 #pragma once
-#include <math/Vector.hpp>
-#include <wrappers/Flag.hpp>
+#include <core/math/Vector.hpp>
+#include <core/wrappers/Flag.hpp>
 
-#include <ui_core/UICommon.hpp>
+#include "ui_core/UICommon.hpp"
 namespace ui
 {
 enum class EUIEvent

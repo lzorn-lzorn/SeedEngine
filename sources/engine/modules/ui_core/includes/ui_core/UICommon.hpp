@@ -2,10 +2,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstddef>
-#include <math/MathCommon.hpp>
-#include <math/Vector.hpp>
-#include <math/Color.hpp>
-#include <math/Geometry.hpp>
+#include <core/math/MathCommon.hpp>
+#include <core/math/Vector.hpp>
+#include <core/math/Color.hpp>
+#include <core/math/Geometry.hpp>
 namespace ui
 {
 using WindowId_t = std::uint64_t;

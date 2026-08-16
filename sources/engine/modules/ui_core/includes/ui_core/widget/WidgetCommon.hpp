@@ -4,9 +4,9 @@
 #include <unordered_map>
 #include <variant>
 
-#include <math/MathCommon.hpp>
+#include <core/math/MathCommon.hpp>
 
-#include <ui_core/UICommon.hpp>
+#include "ui_core/UICommon.hpp"
 namespace ui
 {
 struct LayoutConstraints

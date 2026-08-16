@@ -43,7 +43,13 @@ target_include_directories(Memory PUBLIC
 target_link_libraries(Memory PUBLIC Common)
 
 add_library(Core INTERFACE)
-target_link_libraries(Core INTERFACE Math Wrappers Container Common)
+target_link_libraries(Core 
+INTERFACE 
+	Math 
+	Wrappers 
+	Container 
+	Common
+)
 target_compile_features(Core INTERFACE cxx_std_23)
 
 add_library(Core::Core ALIAS Core)

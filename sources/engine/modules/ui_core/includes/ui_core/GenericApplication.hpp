@@ -1,7 +1,7 @@
 #pragma once
-#include <ui_core/event/MessageHandler.hpp>
-#include <ui_core/UICommon.hpp>
-#include <ui_core/window/GenericWindow.hpp>
+#include "ui_core/event/MessageHandler.hpp"
+#include "ui_core/UICommon.hpp"
+#include "ui_core/window/GenericWindow.hpp"
 
 #include <memory>
 namespace ui

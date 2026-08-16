@@ -2,16 +2,18 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <unordered_map>
+#include <memory>
 
-#include <wrappers/Flag.hpp>
-#include <math/Geometry.hpp>
-#include <math/MathCommon.hpp>
+#include <core/wrappers/Flag.hpp>
+#include <core/math/Geometry.hpp>
+#include <core/math/MathCommon.hpp>
 
-#include <ui_core/widget/WidgetCommon.hpp>
-#include <ui_core/widget/WidgetDocument.hpp>
-#include <ui_core/event/UIEvent.hpp>
-#include <ui_core/UICommon.hpp>
+#include "ui_core/widget/WidgetCommon.hpp"
+#include "ui_core/widget/WidgetDocument.hpp"
+#include "ui_core/event/UIEvent.hpp"
+#include "ui_core/UICommon.hpp"
 
 namespace ui
 {
@@ -121,6 +123,49 @@ private:
 	const PropertyDescriptor* Descriptor = nullptr;
 	std::unordered_map<std::string, UIValue> InlineProperties;
 	std::vector<UIEventBinding> EventBindings;
+};
+
+class ColumnElement : public UIElement
+{
+public:
+	explicit ColumnElement(float InSpacing = 0.0f) 
+		: Spacing(InSpacing) 
+	{};
+
+protected:
+
+	virtual UISize_t mesureOverride(const LayoutConstraints& Constraints) override;
+	virtual void arrangeOverride(const UIRectangle& FinalBounds) override;
+private:
+	float Spacing = 0.0f;
+};
+
+class RowElement : public UIElement
+{
+public:
+	explicit RowElement(float InSpacing = 0.0f) 
+		: Spacing(InSpacing) 
+	{};
+
+protected:
+	virtual UISize_t mesureOverride(const LayoutConstraints& Constraints) override;
+	virtual void arrangeOverride(const UIRectangle& FinalBounds) override;
+
+private:
+	float Spacing = 0.0f;
+
+};
+
+class FlexElement : public UIElement
+{
+
+
+};
+
+class GridElement : public UIElement
+{
+
+
 };
 
 }

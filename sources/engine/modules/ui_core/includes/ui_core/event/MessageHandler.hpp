@@ -1,8 +1,8 @@
 #pragma once
 
-#include <ui_core/UICommon.hpp>
-#include <ui_core/window/GenericWindow.hpp>
-#include <ui_core/event/UIEvent.hpp>
+#include "ui_core/UICommon.hpp"
+#include "ui_core/window/GenericWindow.hpp"
+#include "ui_core/event/UIEvent.hpp"
 
 namespace ui
 {
