@@ -5,6 +5,7 @@
 #include "Platform.hpp"
 #include "SMFControl.hpp"
 #include "ExceptionHandler.hpp"
+#include "STLInterface.hpp"
 
 
 // IWYU pragma: end_exports

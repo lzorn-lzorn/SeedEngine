@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -9,9 +10,10 @@
 #include <core/wrappers/Flag.hpp>
 #include <core/math/Geometry.hpp>
 #include <core/math/MathCommon.hpp>
+#include <core/common/Common.hpp>
 
 #include "ui_core/widget/WidgetCommon.hpp"
-#include "ui_core/widget/WidgetDocument.hpp"
+#include "ui_core/widget/UIDocument.hpp"
 #include "ui_core/event/UIEvent.hpp"
 #include "ui_core/UICommon.hpp"
 
@@ -21,6 +23,7 @@ namespace ui
 class PropertyDescriptor;
 class StyleEngine;
 class WidgetRegistry;
+class UIElement;
 
 enum class EInteractionState_t : uint32_t
 {
@@ -50,14 +53,59 @@ enum class EDirtyFlags_t : uint32_t
 
 using EDirtyFlags = core::wrappers::Flags<EDirtyFlags_t>;
 
+
+class UIElementChildBase
+{
+public:
+	using element_type = UIElement;
+
+	UIElement* getOnwer();
+	UIElement* getOnwer() const;
+private:
+	friend class UIElement;
+	UIElement* Onwer;
+};
+
+class UIElementNoChild : public UIElementChildBase
+{
+public:
+	using child_type = void;
+private:
+	
+};
+
+class UIElementChild : public UIElementChildBase
+{
+public:
+	using child_type = std::unique_ptr<UIElement>;
+
+private:
+	child_type Child;
+};
+
+class UIElementChildren : public UIElementChildBase
+{
+public:
+	using child_type = std::unique_ptr<UIElement>;
+
+	CompatibilityLayer_STLContainer(std::vector<child_type>, Children)
+	
+
+
+	uint32_t getChildrenNum() const { return Children.size(); }
+	element_type* getChildrenAt(uint32_t Index) { return Children[Index].get(); }
+private:
+	std::vector<child_type> Children;
+};
+
+
 class UIElement
+	: std::enable_shared_from_this<UIElement>
 {
 public:
 	virtual ~UIElement() = default;
 
-	void addChild(std::unique_ptr<UIElement> Child);
 	UIElement* getParent();
-	const std::vector<std::unique_ptr<UIElement>>& getChildren() const;
 
 	void setDocumentId(std::string Id);
 	const std::string& getDocumentId() const;
@@ -102,6 +150,9 @@ public:
 	virtual void transferStateFrom(const UIElement& Other);
 
 protected:
+	virtual UIElementChildBase* getChildren() const = 0;
+	virtual UIElementChildBase* getChildren() = 0;
+
 	virtual UISize_t mesureOverride(const LayoutConstraints& Constraints) = 0;
 	virtual void arrangeOverride(const UIRectangle& FinalBounds) = 0;
 
@@ -114,7 +165,6 @@ protected:
 
 private:
 	UIElement* Parent = nullptr;
-	std::vector<std::unique_ptr<UIElement>> Children;
 	std::string DocumentId;
 	std::string TypeName;
 	std::vector<std::string> Classes;
@@ -125,10 +175,55 @@ private:
 	std::vector<UIEventBinding> EventBindings;
 };
 
-class ColumnElement : public UIElement
+class LeafElement : public UIElement
+{
+
+	virtual UIElementChildBase* getChildren() const override { return nullptr; }
+	virtual UIElementChildBase* getChildren() override { return nullptr; }
+protected:
+	virtual UISize_t mesureOverride(const LayoutConstraints& Constraints) override;
+	virtual void arrangeOverride(const UIRectangle& FinalBounds) override;
+};
+
+class WrapperElement : public UIElement
 {
 public:
-	explicit ColumnElement(float InSpacing = 0.0f) 
+	virtual UIElementChildBase* getChildren() const override { return Child; }
+	virtual UIElementChildBase* getChildren() override { return Child; }
+
+	void repalceChild(UIElement*) noexcept;
+
+protected:
+	virtual UISize_t mesureOverride(const LayoutConstraints& Constraints) override;
+	virtual void arrangeOverride(const UIRectangle& FinalBounds) override;
+
+private:
+	UIElementChild* Child;
+};
+
+
+class PanelElement : public UIElement
+{
+public:
+	virtual UIElementChildBase* getChildren() const override { return Children; }
+	virtual UIElementChildBase* getChildren() override { return Children; }
+
+	void addChild(UIElement*);
+	void removeChild(UIElement*) noexcept;
+	void replaceChild(uint32_t, UIElement*) noexcept;
+	UIElement* getChildAt(uint32_t) noexcept;
+protected:
+	virtual UISize_t mesureOverride(const LayoutConstraints& Constraints) override;
+	virtual void arrangeOverride(const UIRectangle& FinalBounds) override;
+
+private:
+	UIElementChildren* Children;
+};
+
+class HorizontalBox : public UIElement
+{
+public:
+	explicit HorizontalBox(float InSpacing = 0.0f) 
 		: Spacing(InSpacing) 
 	{};
 
@@ -140,10 +235,10 @@ private:
 	float Spacing = 0.0f;
 };
 
-class RowElement : public UIElement
+class VerticalBox : public UIElement
 {
 public:
-	explicit RowElement(float InSpacing = 0.0f) 
+	explicit VerticalBox(float InSpacing = 0.0f) 
 		: Spacing(InSpacing) 
 	{};
 

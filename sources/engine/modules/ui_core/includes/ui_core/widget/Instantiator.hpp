@@ -2,7 +2,7 @@
 
 #include "ui_core/UICommon.hpp"
 #include "WidgetCommon.hpp"
-#include "WidgetDocument.hpp"
+#include "UIDocument.hpp"
 #include "widget/UIElement.hpp"
 #include "ui_core/reflection/Registry.hpp"
 #include "ui_core/reflection/Binding.hpp"

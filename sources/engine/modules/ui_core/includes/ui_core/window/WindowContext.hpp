@@ -3,7 +3,7 @@
 #include "ui_core/UICommon.hpp"
 #include "ui_core/widget/WidgetCommon.hpp"
 #include "ui_core/widget/WidgetAnimation.hpp"
-#include "ui_core/widget/WidgetDocument.hpp"
+#include "ui_core/widget/UIDocument.hpp"
 #include "ui_core/widget/UIElement.hpp"
 #include "ui_core/widget/Style.hpp"
 #include "ui_core/widget/Instantiator.hpp"

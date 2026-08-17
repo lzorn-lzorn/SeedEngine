@@ -23,12 +23,12 @@ constexpr float easeOutCubic(float t)
 
 }
 
-class WidgetAnimation
+class UIElementAnimation
 {
 public:
 	using update_fn = std::move_only_function<bool(float)>;
 
-	WidgetAnimation(float Duration, update_fn UpdateCallback)
+	UIElementAnimation(float Duration, update_fn UpdateCallback)
 		: Duration(Duration)
 		, Elapsed(0)
 		, UpdateCallback(std::move(UpdateCallback))
@@ -43,14 +43,14 @@ private:
 
 };
 
-class WidgetAnimationPlayer
+class UIElementAnimationPlayer
 {
 public:
-	void add(std::shared_ptr<WidgetAnimation> Animation);
+	void add(std::shared_ptr<UIElementAnimation> Animation);
 	void update(float DeltaTime);
 
 private:
-	std::vector<std::shared_ptr<WidgetAnimation>> Animations;
+	std::vector<std::shared_ptr<UIElementAnimation>> Animations;
 };
 
 }
