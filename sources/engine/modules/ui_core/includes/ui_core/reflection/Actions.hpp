@@ -28,9 +28,9 @@ class ActionRegistry
 public:
 	using action = std::move_only_function<void(const ActionContext&)>;
 
-	std::expected<void, EActionRegistrationError> registerAction(std::string_view ActionName, action ActionCallback);
+	std::expected<void, EActionRegistrationError> registerAction(const std::string& ActionName, action ActionCallback);
 
-	bool invoke(const std::string& ActionName, const ActionContext& Context) const;
+	bool invoke(const std::string& ActionName, const ActionContext& Context);
 
 private:
 	std::unordered_map<std::string, action> Actions;

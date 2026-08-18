@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <functional>
 #include <memory>
 
 #include <core/wrappers/Flag.hpp>
@@ -219,6 +220,27 @@ protected:
 private:
 	UIElementChildren* Children;
 };
+
+class ElementDescriptor
+{
+public:
+	std::string TypeName;
+	std::function<std::unique_ptr<UIElement>()> Factory;
+	std::unordered_map<std::string, class UIProperty> Properties;
+};
+
+template <typename Ty>
+concept has_register = requires {
+    { Ty::doRegister() } -> std::same_as<void>;
+};
+
+#define REGISTER_ELEMENT(Class)                      \
+static struct Class##_AutoRegister {                \
+	static_assert(has_register<Class>);             \
+	Class##_AutoRegister() { Class::doRegister(); } \
+} Class##_auto_register_instance;
+
+
 
 class HorizontalBox : public UIElement
 {

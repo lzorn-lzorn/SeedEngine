@@ -5,19 +5,10 @@
 #include <string>
 #include <unordered_map>
 
-#include "Property.hpp"
+#include "ui_core/widget/UIProperties.hpp"
 #include "ui_core/widget/UIElement.hpp"
 namespace ui
 {
-
-struct WidgetDescrptor
-{
-	std::string TypeName;
-	std::string DisplayName;
-	std::string Category;
-	std::function<std::unique_ptr<UIElement>()> Factory;
-	std::unordered_map<std::string, PropertyDescriptor> Properties;
-};
 
 enum class ERegistryError
 {
@@ -25,14 +16,23 @@ enum class ERegistryError
 	WidgetNotFound
 };
 
-class WidgetRegistry
+class ElementRegistry
 {
 public:
-	std::expected<void, ERegistryError> registerWidget(const WidgetDescrptor& Descriptor);
-	const WidgetDescrptor* findWidget(const std::string& TypeName) const;
+	static ElementRegistry& getInstance()
+	{
+		static ElementRegistry Instance;
+		return Instance;
+	}
+	~ElementRegistry() = default;
+	void registerElement(const ElementDescriptor& Descriptor);
+	const ElementDescriptor* findElement(const std::string& TypeName) const;
 
 private:
-	std::unordered_map<std::string, WidgetDescrptor> Widgets;
+	ElementRegistry() = default;
+	ElementRegistry(const ElementRegistry&) = delete;
+	ElementRegistry& operator=(const ElementRegistry&) = delete;
+	std::unordered_map<std::string, std::unique_ptr<ElementDescriptor>> Elements;
 
 };
 

@@ -48,7 +48,7 @@ struct PropertyError
 	std::string Message;
 };
 
-struct PropertyDescriptor
+struct UIProperty
 {
 	std::string Name;
 	std::string DisplayName;
