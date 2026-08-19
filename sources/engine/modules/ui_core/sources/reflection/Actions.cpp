@@ -1,5 +1,3 @@
-#pragma once
-
 #include "ui_core/reflection/Actions.hpp"
 
 namespace ui

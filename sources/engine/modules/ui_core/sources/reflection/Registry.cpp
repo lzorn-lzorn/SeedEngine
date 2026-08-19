@@ -1,5 +1,3 @@
-#pragma once 
-
 #include "ui_core/reflection/Registry.hpp"
 
 #include <expected>
