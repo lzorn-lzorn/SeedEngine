@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace core
+namespace core::wrappers
 {
 
 inline constexpr std::size_t DefaultDelegateInlineSize = 32;
@@ -41,36 +41,20 @@ struct DelegateHandle
     }
 
     [[nodiscard]]
-    constexpr bool operator==(
-        const DelegateHandle&
-    ) const noexcept = default;
+    constexpr bool operator==(const DelegateHandle&) const noexcept = default;
 };
 
 struct DefaultDelegateAllocatePolicy
 {
     [[nodiscard]]
-    static void* allocate(
-        std::size_t Size,
-        std::size_t Alignment
-    )
+    static void* allocate(std::size_t Size, std::size_t Alignment)
     {
-        return ::operator new(
-            Size,
-            std::align_val_t{Alignment}
-        );
+        return ::operator new(Size, std::align_val_t{Alignment});
     }
 
-    static void deallocate(
-        void* Memory,
-        std::size_t Size,
-        std::size_t Alignment
-    ) noexcept
+    static void deallocate(void* Memory, std::size_t Size, std::size_t Alignment) noexcept
     {
-        ::operator delete(
-            Memory,
-            Size,
-            std::align_val_t{Alignment}
-        );
+        ::operator delete(Memory, Size, std::align_val_t{Alignment});
     }
 };
 
@@ -1842,4 +1826,4 @@ using HeapDelegate = Delegate<Signature, 0>;
 template <typename Signature>
 using HeapUniqueDelegate = UniqueDelegate<Signature, 0>;
 
-} // namespace core
+} // namespace core::wrappers
