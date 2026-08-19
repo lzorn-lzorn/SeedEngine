@@ -3,6 +3,7 @@
 // IWYU pragma: begin_exports
 
 #include "Platform.hpp"
+#include "Debug.hpp"
 #include "SMFControl.hpp"
 #include "ExceptionHandler.hpp"
 #include "STLInterface.hpp"

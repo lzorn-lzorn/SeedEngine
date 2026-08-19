@@ -36,7 +36,7 @@
 #		define CPU_RELAX __builtin_ia32_pause()
 #	endif
 #elif defined(__arm__) || defined(__aarch64__)
-#	define CPU_RELAX asm volatile("yield")
+#	define CPU_RELAX __yield()
 #else
 #	define CPU_RELAX std::this_thread::yield()
 #endif
