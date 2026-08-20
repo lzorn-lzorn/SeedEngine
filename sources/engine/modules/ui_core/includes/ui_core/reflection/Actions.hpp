@@ -1,6 +1,7 @@
 #pragma once
 
 #include <expected>
+#include <version>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -26,14 +27,17 @@ enum class EActionRegistrationError
 class ActionRegistry
 {
 public:
-	using action = std::move_only_function<void(const ActionContext&)>;
-
-	std::expected<void, EActionRegistrationError> registerAction(const std::string& ActionName, action ActionCallback);
+#if defined(__cpp_lib_move_only_function)
+	using action_type = std::move_only_function<void(const ActionContext&)>;
+#else
+	using action_type = std::function<void(const ActionContext&)>;
+#endif
+	std::expected<void, EActionRegistrationError> registerAction(const std::string& ActionName, action_type ActionCallback);
 
 	bool invoke(const std::string& ActionName, const ActionContext& Context);
 
 private:
-	std::unordered_map<std::string, action> Actions;
+	std::unordered_map<std::string, action_type> Actions;
 };
 
 }

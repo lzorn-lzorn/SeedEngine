@@ -3,7 +3,7 @@
 namespace ui
 {
 std::expected<void, EActionRegistrationError> 
-ActionRegistry::registerAction(const std::string& ActionName, action ActionCallback)
+ActionRegistry::registerAction(const std::string& ActionName, action_type ActionCallback)
 {
 	Actions[std::move(ActionName)] = std::move(ActionCallback);
 	return {};

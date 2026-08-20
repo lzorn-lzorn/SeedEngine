@@ -1,5 +1,4 @@
 #include "EngineCycle.hpp"
-#include <Application.hpp>
 
 void EngineCycle::preinitialize() 
 {
