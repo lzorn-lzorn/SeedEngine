@@ -3,13 +3,16 @@ file(GLOB_RECURSE SOURCES_LIST
     ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
 )
 
-add_internal_module(World
+add_internal_module(Engine
     TYPE                STATIC
     SOURCES             ${SOURCES_LIST}
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
+						"${CMAKE_CURRENT_SOURCE_DIR}/includes/engine"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
-    PRIVATE_DEPENDENCY  Core::Core
-    ALIAS               Runtime::World
+    PRIVATE_DEPENDENCY  Core::Core 
+						Runtime::World
+						Runtime::Renderer
 )
-add_library(Runtime_World INTERFACE)
-target_link_libraries(Runtime_World INTERFACE World)
+
+add_library(Runtime_Engine INTERFACE)
+target_link_libraries(Runtime_Engine INTERFACE Engine)

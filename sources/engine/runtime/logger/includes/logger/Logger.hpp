@@ -84,9 +84,6 @@ inline constexpr LogCategory DefaultCategory{
 		.Color = COLOR, \
 	}
 
-// 兼容旧名称，新代码统一使用 DECLARE_LOG_CATEGORY。
-#define DECLARE_CATEGORY(NAME, COLOR) DECLARE_LOG_CATEGORY(NAME, COLOR)
-
 struct LogOptions
 {
 	LogLevel Level{levels::Info};
