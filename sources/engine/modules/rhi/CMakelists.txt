@@ -5,3 +5,198 @@ if (TARGET DXC::Compiler)
 else()
     message(STATUS "DXC::Compiler target not found, skipping DXC runtime link for this platform.")
 endif()
+
+set(SOURCES_LIST)
+
+# Test Vk:
+if(TRUE)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+        set(GRAPHICS_BACKEND "Vulkan")
+        set(GRAPHICS_API_VULKAN TRUE)
+        file(GLOB_RECURSE SOURCES_LIST
+            ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.hpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
+        )
+    endif()
+else()
+    # ---------------- 后端检测 ----------------
+    if(WIN32)
+        # 1. DirectX 12
+        find_path(DX12_INCLUDE_DIR d3d12.h QUIET)
+        find_library(DX12_D3D_LIBRARY d3d12 QUIET)
+        find_library(DXGI_LIBRARY dxgi QUIET)
+
+        if(DX12_INCLUDE_DIR AND DX12_D3D_LIBRARY AND DXGI_LIBRARY)
+            set(GRAPHICS_BACKEND "Direct3D 12")
+            set(GRAPHICS_API_DX12 TRUE)
+            
+            file(GLOB_RECURSE SOURCES_LIST
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx12/*.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx12/*.hpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx12/*.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
+            )
+
+        else()
+            # 2. DirectX 11
+            find_path(DX11_INCLUDE_DIR d3d11.h QUIET)
+            find_library(DX11_D3D_LIBRARY d3d11 QUIET)
+
+            if(DX11_INCLUDE_DIR AND DX11_D3D_LIBRARY AND DXGI_LIBRARY)
+                set(GRAPHICS_BACKEND "Direct3D 11")
+                set(GRAPHICS_API_DX11 TRUE)
+                
+                file(GLOB_RECURSE SOURCES_LIST
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx11/*.cpp
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx11/*.hpp
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx11/*.h
+                    ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
+                )
+            else()
+                message(FATAL "Not Supported Graphics Backend: DirectX 12/11 not found on Windows")
+                # 3. DirectX 10
+                # find_path(DX10_INCLUDE_DIR d3d10.h QUIET)
+                # find_library(DX10_D3D_LIBRARY d3d10 QUIET)
+
+                # if(DX10_INCLUDE_DIR AND DX10_D3D_LIBRARY AND DXGI_LIBRARY)
+                #     set(GRAPHICS_BACKEND "Direct3D 10")
+                #     set(GRAPHICS_API_DX10 TRUE)
+                # else()
+                #     # 4. DirectX 9
+                #     find_path(DX9_INCLUDE_DIR d3d9.h QUIET)
+                #     find_library(DX9_D3D_LIBRARY d3d9 QUIET)
+
+                #     if(DX9_INCLUDE_DIR AND DX9_D3D_LIBRARY)
+                #         set(GRAPHICS_BACKEND "Direct3D 9")
+                #         set(GRAPHICS_API_DX9 TRUE)
+                #     else()
+                #         message(WARNING "Windows 上未找到 DirectX 12/11/10/9")
+                #     endif()
+                # endif()
+            endif()
+        endif()
+
+    elseif(APPLE)
+        # 1. Metal
+        find_library(METAL_LIBRARY Metal QUIET)
+        if(METAL_LIBRARY)
+            set(GRAPHICS_BACKEND "Metal")
+            set(GRAPHICS_API_METAL TRUE)
+            file(GLOB_RECURSE SOURCES_LIST
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/metal/*.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/metal/*.hpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/metal/*.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
+            )
+        else()
+            # 2. OpenGL
+            find_package(OpenGL QUIET)
+            if(OpenGL_FOUND)
+                set(GRAPHICS_BACKEND "OpenGL")
+                set(GRAPHICS_API_OPENGL TRUE)
+                file(GLOB_RECURSE SOURCES_LIST
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.cpp
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.hpp
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.h
+                    ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
+                )
+            else()
+                message(WARNING "macOS 上未找到 Metal 或 OpenGL")
+            endif()
+        endif()
+
+    elseif(UNIX)
+        # 1. Vulkan
+        find_package(Vulkan QUIET)
+        if(Vulkan_FOUND)
+            set(GRAPHICS_BACKEND "Vulkan")
+            set(GRAPHICS_API_VULKAN TRUE)
+            file(GLOB_RECURSE SOURCES_LIST
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.hpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
+            )
+        else()
+            # 2. OpenGL
+            find_package(OpenGL QUIET)
+            if(OpenGL_FOUND)
+                set(GRAPHICS_BACKEND "OpenGL")
+                set(GRAPHICS_API_OPENGL TRUE)
+                file(GLOB_RECURSE SOURCES_LIST
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.cpp
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.hpp
+                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.h
+                    ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
+                )
+            else()
+                message(WARNING "Linux/UNIX 上未找到 Vulkan 或 OpenGL")
+            endif()
+        endif()
+    endif()
+endif()
+
+add_internal_module(RHI
+    TYPE                STATIC
+    SOURCES             ${SOURCES_LIST}
+    INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
+    PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
+    PRIVATE_DEPENDENCY  Core::Core
+    ALIAS               Module::RHI
+)
+
+if(GRAPHICS_API_DX12)
+    target_compile_definitions(RHI PRIVATE GRAPHICS_API_DX12=1)
+    target_include_directories(RHI PRIVATE ${DX12_INCLUDE_DIR})
+    target_link_libraries(RHI PRIVATE ${DX12_D3D_LIBRARY} ${DXGI_LIBRARY})
+
+elseif(GRAPHICS_API_DX11)
+    target_compile_definitions(RHI PRIVATE GRAPHICS_API_DX11=1)
+    target_include_directories(RHI PRIVATE ${DX11_INCLUDE_DIR})
+    target_link_libraries(RHI PRIVATE ${DX11_D3D_LIBRARY} ${DXGI_LIBRARY})
+
+elseif(GRAPHICS_API_DX10)
+    target_compile_definitions(RHI PRIVATE GRAPHICS_API_DX10=1)
+    target_include_directories(RHI PRIVATE ${DX10_INCLUDE_DIR})
+    target_link_libraries(RHI PRIVATE ${DX10_D3D_LIBRARY} ${DXGI_LIBRARY})
+
+elseif(GRAPHICS_API_DX9)
+    target_compile_definitions(RHI PRIVATE GRAPHICS_API_DX9=1)
+    target_include_directories(RHI PRIVATE ${DX9_INCLUDE_DIR})
+    target_link_libraries(RHI PRIVATE ${DX9_D3D_LIBRARY})
+
+elseif(GRAPHICS_API_VULKAN)
+    target_compile_definitions(RHI PRIVATE GRAPHICS_API_VULKAN=1)
+    # 专门伺候 <windows.h> 这个头文件:
+    # VK_USE_PLATFORM_WIN32_KHR: 用于启动 win32 surface
+    # NOMINMAX: 避免 windows.h 定义 min/max 宏
+    # WIN32_LEAN_AND_MEAN: 避免 windows.h 引入过多不必要的头文件
+    if (WIN32)
+        target_compile_definitions(RHI PRIVATE VK_USE_PLATFORM_WIN32_KHR NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
+    if(TARGET Vulkan::Vulkan)
+        target_link_libraries(RHI PRIVATE Vulkan::Vulkan)
+    else()
+        target_include_directories(RHI PRIVATE ${Vulkan_INCLUDE_DIRS})
+        target_link_libraries(RHI PRIVATE ${Vulkan_LIBRARIES})
+    endif()
+
+elseif(GRAPHICS_API_METAL)
+    target_compile_definitions(RHI PRIVATE GRAPHICS_API_METAL=1)
+    target_link_libraries(RHI PRIVATE ${METAL_LIBRARY})
+
+elseif(GRAPHICS_API_OPENGL)
+    target_compile_definitions(RHI PRIVATE GRAPHICS_API_OPENGL=1)
+    if(TARGET OpenGL::GL)
+        target_link_libraries(RHI PRIVATE OpenGL::GL)
+    else()
+        target_include_directories(RHI PRIVATE ${OPENGL_INCLUDE_DIRS})
+        target_link_libraries(RHI PRIVATE ${OPENGL_LIBRARIES})
+    endif()
+
+else()
+    message(FATAL_ERROR "未找到任何受支持的图形后端")
+endif()

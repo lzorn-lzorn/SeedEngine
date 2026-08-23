@@ -57,7 +57,6 @@ void Engine::preinitialize()
 		}
 	}
 
-
 	LOG_INFO(runtime::DefaultCategory, "Engine initialized successfully");
 	LOG_INFO(DefaultCategory, "Engine version {}", "1.0.0");
 	// 初始化底层 UI 系统, 获得窗口和事件分发
