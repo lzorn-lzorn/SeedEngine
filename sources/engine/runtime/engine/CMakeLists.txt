@@ -12,6 +12,7 @@ add_internal_module(Engine
     PRIVATE_DEPENDENCY  Core::Core 
 						Runtime::World
 						Runtime::Renderer
+						Runtime::Logger
 )
 
 add_library(Runtime_Engine INTERFACE)

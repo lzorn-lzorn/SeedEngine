@@ -187,8 +187,7 @@ public:
 	void setEditorConsoleSink(editor_console_sink_t Sink);
 	void clearEditorConsoleSink();
 
-	[[nodiscard]] sink_id_t registerSink(
-		sink_callback_t Sink,
+	sink_id_t registerSink(sink_callback_t Sink,
 		LogDestination InDestination = LogDestination_t::All);
 	[[nodiscard]] bool unregisterSink(sink_id_t Id);
 	void clearSinks();
