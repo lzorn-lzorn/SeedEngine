@@ -48,4 +48,11 @@ template <std::floating_point Number>
     return equalNearly(Value, Number {}, Tolerance);
 }
 
+// @brief 向上取整到指定对齐值的整数倍
+template <std::integral Ty>
+inline Ty alignUp(Ty Value, Ty Alignment) noexcept
+{
+    return (Value + Alignment - 1) & ~(Alignment - 1);
+}
+
 } // namespace core::math
