@@ -5,7 +5,7 @@
 
 namespace runtime
 {
-const Logger::Config Logger::DefaultConfig{};
+const runtime::Logger::Config runtime::Logger::DefaultConfig{};
 
 Message Message::make(
 	std::uint64_t Id,

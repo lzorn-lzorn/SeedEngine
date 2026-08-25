@@ -21,6 +21,7 @@
 
 #include "core/containers/Buffer.hpp"
 #include "core/wrappers/Flag.hpp"
+#include "core/common/AtomicShared.hpp"
 
 namespace runtime
 {
@@ -102,6 +103,12 @@ struct Message
 		const LogOptions& Options,
 		const std::source_location& Location,
 		std::string Text);
+
+    Message() = default;
+    Message(const Message&) = default;
+    Message& operator=(const Message&) = default;
+    Message(Message&&) = default;
+    Message& operator=(Message&&) = default;
 
 	[[nodiscard]] static std::string serialize(const Message& Record);
 	[[nodiscard]] static Message deserialize(const std::string& Str);
@@ -359,10 +366,20 @@ private:
 	void closeLogFile() noexcept;
 
 	core::RingBuffer<Message, std::allocator<Message>, core::ERingBufferPolicy::MPSC> MessageQueue;
-	std::atomic<std::shared_ptr<const sink_list_t>> SinksSnapshot;
-	std::atomic<std::shared_ptr<const screen_sink_t>> ScreenSinkSnapshot;
-	std::atomic<std::shared_ptr<const editor_console_sink_t>> EditorConsoleSinkSnapshot;
 
+    core::AtomicShared<const sink_list_t> SinksSnapshot;
+    core::AtomicShared<const screen_sink_t> ScreenSinkSnapshot;
+    core::AtomicShared<const editor_console_sink_t> EditorConsoleSinkSnapshot;
+// #ifdef __cpp_lib_atomic_shared_ptr
+// 	std::atomic<std::shared_ptr<const sink_list_t>> SinksSnapshot;
+// 	std::atomic<std::shared_ptr<const screen_sink_t>> ScreenSinkSnapshot;
+// 	std::atomic<std::shared_ptr<const editor_console_sink_t>> EditorConsoleSinkSnapshot;
+// 
+// #else
+// 	std::shared_ptr<const sink_list_t> SinksSnapshot;
+// 	std::shared_ptr<const screen_sink_t> ScreenSinkSnapshot;
+// 	std::shared_ptr<const editor_console_sink_t> EditorConsoleSinkSnapshot;
+// #endif
 	std::jthread WorkerThread;
 	mutable std::mutex LifecycleMutex;
 	std::mutex ProgramConsoleMutex;
