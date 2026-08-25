@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <memory>
 #include <string_view>
-#include <ui_core/UICommon.hpp>
-#include <ui_core/GenericApplication.hpp>
+#include <generic_application/UICommon.hpp>
+#include <generic_application/GenericApplication.hpp>
 namespace app
 {
 

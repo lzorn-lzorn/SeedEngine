@@ -7,11 +7,11 @@
 #include <flat_map>
 
 #include <SDL3/SDL.h>
-#include <ui_core/GenericApplication.hpp>
-#include <ui_core/window/GenericWindow.hpp>
-#include <ui_core/event/MessageHandler.hpp>
+#include <generic_application/GenericApplication.hpp>
+#include <generic_application/window/GenericWindow.hpp>
+#include <generic_application/event/MessageHandler.hpp>
 #include <sdl/SDLWindow.hpp>
-#include <ui_core/UICommon.hpp>
+#include <generic_application/UICommon.hpp>
 
 namespace app::details
 {

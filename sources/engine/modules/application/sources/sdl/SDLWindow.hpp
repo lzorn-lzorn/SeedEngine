@@ -2,8 +2,8 @@
 
 #include <cstdint>
 #include <memory>
-#include <ui_core/UICommon.hpp>
-#include <ui_core/window/GenericWindow.hpp>
+#include <generic_application/UICommon.hpp>
+#include <generic_application/window/GenericWindow.hpp>
 
 // 这里不能前向申明 SDL_Window, 不然在析构中 ::SDL_DestroyWindow(NativeWindow) 会 
 // 解析到 NativeWindow 的类型是 app::SDL_Window, SDL_DestroyWindow 不认识这个类型

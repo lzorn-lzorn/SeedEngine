@@ -16,6 +16,7 @@ project(SEED
 )
 
 include(cmake/BuildTools.cmake)
+include(cmake/EngineBuildRule.cmake)
 
 add_subdirectory(sources)
 add_subdirectory(extern)

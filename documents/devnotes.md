@@ -67,23 +67,23 @@ template <your_concept Ty>
 ## 头文件
 头文件统一使用 .hpp 因为 .h 的后缀有时静态分析器会按照C来解析
 
-在使用 `add_internal_module` 时, 可以参考 `UICore/CMakeLists.txt`
+在使用 `add_internal_module` 时, 可以参考 `GenericApplication/CMakeLists.txt`
 ```cmake
-add_internal_module(UICore
+add_internal_module(GenericApplication
     TYPE                STATIC
     SOURCES             ${SOURCES_LIST}
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
     PRIVATE_DEPENDENCY  SDL3::SDL3 Core::Core
-    ALIAS               Module::UICore
+    ALIAS               Module::GenericApplication
 )
 ```
 同时在 include/ 下创建一个同名的文件夹内部放置你的具体的头文件. 如此做的原因时当外部模块
 引用本某模块的头文件时, 需要指定模块名. 例如 Application 模块
 ```cpp
-#include <ui_core/event/Event.hpp>
+#include <generic_application/event/Event.hpp>
 ```
-才能成功引入 UICore 下的 `Event.hpp`. 拥有更好的可读性, 同时对于模块内部, 例如 UICore
+才能成功引入 GenericApplication 下的 `Event.hpp`. 拥有更好的可读性, 同时对于模块内部, 例如 GenericApplication
 内部, 也推荐使用 `""` 而不是 `<>` 来指定路径, 两者功能没有太大区别, 主要是用于区分内部
 外部模块
 
@@ -95,10 +95,3 @@ add_internal_module(UICore
 > 寻找, 如果强行使用, 例如 `#include <Common.hpp>` 实际上 Common.hpp 在上一级目录, 
 > 构建器也能找到, 但是抛出警告.
 
-# 项目结构
-sources/engine 是引擎的核心模块, 其分成以下结构
-- core: 核心模块, 相当于引擎层面的标准库, 其不会依赖任何其他模块, 同时内部也会封装不同
-平台的特性
-- modules: 独立的内部模块, 其仅仅依赖 core 相当于引擎层面的内部库(内部库之间也有依赖)
-- launcher: 启动器, 其负责初始化整个引擎或者游戏. 依赖于 modules 和 core
-- runtime: 引擎的运行时, 由 launcher 完成初始化. 依赖于 modules 和 core
