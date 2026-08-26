@@ -1,4 +1,6 @@
 #pragma once
+
+#include <memory>
 #include <cstdint>
 #include <core/wrappers/Flag.hpp>
 #include <core/math/MathCommon.hpp>
@@ -340,6 +342,48 @@ enum class EPresentMode {
     Mailbox
 };
 
+class RBuffer;
+class RImage;
+class RSampler;
+class RShader;
+class RPipeline;
+class RRenderPass;
+class RCommandList;
+class RSwapchain;
+class RTexture;
 
+class RDevice
+{
+public:
+	
+	RDevice() = default;
+	virtual ~RDevice() = default;
 
+	virtual RBuffer* createBuffer() = 0;
+	virtual RImage* createImage() = 0;
+	virtual RSampler* createSampler() = 0;
+	virtual RShader* createShader() = 0;
+	virtual RPipeline* createPipeline() = 0;
+	virtual RRenderPass* createRenderPass() = 0;
+	virtual RCommandList* createCommandList() = 0;
+	virtual RSwapchain* createSwapchain() = 0;
+	virtual RTexture* createTexture() = 0;
+
+	virtual void waitIdle() = 0;
+	virtual void* getNativeHandle() const = 0;
+
+protected:
+	class IRHI* OnwerRHI = nullptr; 
+};
+
+class IRHI
+{
+public:
+	IRHI() = default;
+	virtual ~IRHI() = default;
+
+	
+	virtual ESupportedBackendAPI getBackendAPI() const = 0;
+	virtual std::shared_ptr<RDevice> createDevice() = 0;
+};
 }
