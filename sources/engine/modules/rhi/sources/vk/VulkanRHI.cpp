@@ -1,4 +1,5 @@
 #include "VulkanRHI.h"
+#include "VulkanDevice.h"
 #include "vulkan/vulkan.hpp"
 
 #include <iostream>
@@ -347,4 +348,4 @@ void VulkanRHI::createLogicalDevice()
 }
 
 
-}
+} // namespace rhi

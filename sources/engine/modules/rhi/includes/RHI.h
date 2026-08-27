@@ -381,9 +381,8 @@ class IRHI
 public:
 	IRHI() = default;
 	virtual ~IRHI() = default;
-
 	
 	virtual ESupportedBackendAPI getBackendAPI() const = 0;
-	virtual std::shared_ptr<RDevice> createDevice() = 0;
+	virtual RDevice& createDevice() = 0;
 };
 }
