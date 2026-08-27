@@ -349,8 +349,19 @@ class RShader;
 class RPipeline;
 class RRenderPass;
 class RCommandList;
-class RSwapchain;
+
 class RTexture;
+
+class RSwapchain
+{
+public:
+	RSwapchain() = default;
+	virtual ~RSwapchain() = default;
+
+	virtual void resize(uint32_t width, uint32_t height) = 0;
+	virtual void present() = 0;
+
+};
 
 class RDevice
 {
@@ -383,6 +394,6 @@ public:
 	virtual ~IRHI() = default;
 	
 	virtual ESupportedBackendAPI getBackendAPI() const = 0;
-	virtual RDevice& createDevice() = 0;
+	virtual std::shared_ptr<RDevice> createDevice() = 0;
 };
 }

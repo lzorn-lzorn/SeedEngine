@@ -16,7 +16,7 @@ public:
 	virtual ~VulkanRHI() = default;
 
 	ESupportedBackendAPI getBackendAPI() const override { return ESupportedBackendAPI::Vulkan; }
-	RDevice& createDevice() override;
+	std::shared_ptr<RDevice> createDevice() override;
 
 
 public:

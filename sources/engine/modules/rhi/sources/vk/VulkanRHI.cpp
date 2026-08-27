@@ -141,7 +141,7 @@ void VulkanRHI::createVkInstance()
     );
 
     std::vector<const char*> layers;
-#ifdef VULKAN_ENABLE_VALIDATION
+#ifndef NDEBUG
     const char* validation_layer = "VK_LAYER_KHRONOS_validation";
     auto available_layers = vk::enumerateInstanceLayerProperties();
     for (const auto& layer : available_layers) 
@@ -328,13 +328,14 @@ void VulkanRHI::createLogicalDevice()
     std::vector<const char*> enabledExtensions;
     enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
+	const char* validation_layer = "VK_LAYER_KHRONOS_validation";
     vk::DeviceCreateInfo device_creation_info(
         vk::DeviceCreateFlags(),
         static_cast<uint32_t>(queue_createInfos.size()),
         queue_createInfos.data(),
-#ifdef VULKAN_ENABLE_VALIDATION
+#ifndef NDEBUG
         1, 
-		"VK_LAYER_KHRONOS_validation",
+		&validation_layer,
 #else
 		0,
 		nullptr,
@@ -347,5 +348,13 @@ void VulkanRHI::createLogicalDevice()
     LogicalDevice = RealGPU.createDeviceUnique(device_creation_info);
 }
 
+std::shared_ptr<RDevice> VulkanRHI::createDevice()
+{
+	if (!LogicalDevice)
+	{
+		throw std::runtime_error("Logical device not created.");
+	}
+	return std::make_shared<VulkanDevice>(RealGPU, LogicalDevice);
+}
 
 } // namespace rhi
