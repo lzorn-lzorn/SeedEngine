@@ -130,6 +130,379 @@ static int scoreDevice(vk::PhysicalDevice RealGPU)
 namespace rhi
 {
 
+vk::Format toVkFormat(EFormat Fomat)
+{
+	switch (Fomat)
+	{
+	case EFormat::RGBA8_UNorm: return vk::Format::eR8G8B8A8Unorm;
+	case EFormat::RGBA8_sRGB: return vk::Format::eR8G8B8A8Srgb;
+	case EFormat::BGRA8_UNorm: return vk::Format::eB8G8R8A8Unorm;
+	case EFormat::RGBA16_Float: return vk::Format::eR16G16B16A16Sfloat;
+	case EFormat::RGBA32_Float: return vk::Format::eR32G32B32A32Sfloat;
+	case EFormat::D24_UNorm_S8_UInt: return vk::Format::eD24UnormS8Uint;
+	case EFormat::D32_Float: return vk::Format::eD32Sfloat;
+	case EFormat::Undefined:
+	default:
+		return vk::Format::eUndefined;
+	}
+}
+
+vk::IndexType toVkIndexType(EIndexFormat Fomat)
+{
+	switch (Fomat)
+	{
+	case EIndexFormat::UInt16: return vk::IndexType::eUint16;
+	case EIndexFormat::UInt32: return vk::IndexType::eUint32;
+	case EIndexFormat::None:
+	default:
+	#ifdef VK_INDEX_TYPE_NONE_KHR
+		return vk::IndexType::eNoneKHR;
+	#else
+		return vk::IndexType::eUint32;
+	#endif
+	}
+}
+
+vk::ShaderStageFlags toVkShaderStageFlags(EShaderStage Stage)
+{
+	vk::ShaderStageFlags result = vk::ShaderStageFlags();
+	if (Stage.has(EShaderStage_t::Vertex)) result |= vk::ShaderStageFlags::BitsType::eVertex;
+	if (Stage.has(EShaderStage_t::Pixel)) result |= vk::ShaderStageFlags::BitsType::eFragment;
+	if (Stage.has(EShaderStage_t::Compute)) result |= vk::ShaderStageFlags::BitsType::eCompute;
+	if (Stage.has(EShaderStage_t::Geometry)) result |= vk::ShaderStageFlags::BitsType::eGeometry;
+#ifdef VK_SHADER_STAGE_MESH_BIT_EXT
+	if (Stage.has(EShaderStage_t::Mesh)) result |= vk::ShaderStageFlags::BitsType::eMesh;
+#endif
+#ifdef VK_SHADER_STAGE_TASK_BIT_EXT
+	if (Stage.has(EShaderStage_t::Amplification)) result |= vk::ShaderStageFlags::BitsType::eTask;
+#endif
+	return result;
+}
+
+vk::BufferUsageFlags toVkBufferUsage(EBufferUsage Usage)
+{
+	vk::BufferUsageFlags flags = vk::BufferUsageFlags();
+	if (Usage.has(EBufferUsage_t::Vertex)) flags |= vk::BufferUsageFlags::BitsType::eVertexBuffer;
+	if (Usage.has(EBufferUsage_t::Index)) flags |= vk::BufferUsageFlags::BitsType::eIndexBuffer;
+	if (Usage.has(EBufferUsage_t::Uniform)) flags |= vk::BufferUsageFlags::BitsType::eUniformBuffer;
+	if (Usage.has(EBufferUsage_t::Storage)) flags |= vk::BufferUsageFlags::BitsType::eStorageBuffer;
+	if (Usage.has(EBufferUsage_t::Indirect)) flags |= vk::BufferUsageFlags::BitsType::eIndirectBuffer;
+	if (Usage.has(EBufferUsage_t::TransferSrc)) flags |= vk::BufferUsageFlags::BitsType::eTransferSrc;
+	if (Usage.has(EBufferUsage_t::TransferDst)) flags |= vk::BufferUsageFlags::BitsType::eTransferDst;
+	return flags;
+}
+
+vk::ImageUsageFlags toVkImageUsage(EImageUsage Usage)
+{
+	vk::ImageUsageFlags flags = vk::ImageUsageFlags();
+	if (Usage.has(EImageUsage_t::Sampled)) flags |= vk::ImageUsageFlags::BitsType::eSampled;
+	if (Usage.has(EImageUsage_t::Storage)) flags |= vk::ImageUsageFlags::BitsType::eStorage;
+	if (Usage.has(EImageUsage_t::Target)) flags |= vk::ImageUsageFlags::BitsType::eColorAttachment;
+	if (Usage.has(EImageUsage_t::DepthStencil)) flags |= vk::ImageUsageFlags::BitsType::eDepthStencilAttachment;
+	if (Usage.has(EImageUsage_t::TransferSrc)) flags |= vk::ImageUsageFlags::BitsType::eTransferSrc;
+	if (Usage.has(EImageUsage_t::TransferDst)) flags |= vk::ImageUsageFlags::BitsType::eTransferDst;
+	return flags;
+}
+
+vk::PrimitiveTopology toVkPrimitiveTopology(EPrimitiveTopology Topology)
+{
+	switch (Topology)
+	{
+	case EPrimitiveTopology::PointList: return vk::PrimitiveTopology::ePointList;
+	case EPrimitiveTopology::LineList: return vk::PrimitiveTopology::eLineList;
+	case EPrimitiveTopology::LineStrip: return vk::PrimitiveTopology::eLineStrip;
+	case EPrimitiveTopology::TriangleStrip: return vk::PrimitiveTopology::eTriangleStrip;
+	case EPrimitiveTopology::TriangleList:
+	default:
+		return vk::PrimitiveTopology::eTriangleList;
+	}
+}
+
+vk::PolygonMode toVkPolygonMode(EFillMode Mode)
+{
+	return Mode == EFillMode::Wireframe ? vk::PolygonMode::eLine : vk::PolygonMode::eFill;
+}
+
+vk::CullModeFlags toVkCullMode(ECullMode Mode)
+{
+	switch (Mode)
+	{
+	case ECullMode::Front: return vk::CullModeFlagBits::eFront;
+	case ECullMode::Back: return vk::CullModeFlagBits::eBack;
+	case ECullMode::None:
+	default:
+		return vk::CullModeFlagBits::eNone;
+	}
+}
+
+vk::CompareOp toVkCompareOp(ECompareOp Op)
+{
+	switch (Op)
+	{
+	case ECompareOp::Less: return vk::CompareOp::eLess;
+	case ECompareOp::LessEqual: return vk::CompareOp::eLessOrEqual;
+	case ECompareOp::Equal: return vk::CompareOp::eEqual;
+	case ECompareOp::NotEqual: return vk::CompareOp::eNotEqual;
+	case ECompareOp::GreaterEqual: return vk::CompareOp::eGreaterOrEqual;
+	case ECompareOp::Greater: return vk::CompareOp::eGreater;
+	case ECompareOp::Never: return vk::CompareOp::eNever;
+	case ECompareOp::Always:
+	default:
+		return vk::CompareOp::eAlways;
+	}
+}
+
+vk::StencilOp toVkStencilOp(EStencilOp Op)
+{
+	switch (Op)
+	{
+	case EStencilOp::Keep: return vk::StencilOp::eKeep;
+	case EStencilOp::Zero: return vk::StencilOp::eZero;
+	case EStencilOp::Replace: return vk::StencilOp::eReplace;
+	case EStencilOp::IncrementAndClamp: return vk::StencilOp::eIncrementAndClamp;
+	case EStencilOp::DecrementAndClamp: return vk::StencilOp::eDecrementAndClamp;
+	case EStencilOp::Invert: return vk::StencilOp::eInvert;
+	case EStencilOp::IncrementAndWrap: return vk::StencilOp::eIncrementAndWrap;
+	case EStencilOp::DecrementAndWrap: return vk::StencilOp::eDecrementAndWrap;
+	default:
+		return vk::StencilOp::eKeep;
+	}
+}
+
+vk::SampleCountFlagBits toVkSampleCount(ESampleCount count)
+{
+	switch (count)
+	{
+	case ESampleCount::Count2: return vk::SampleCountFlagBits::e2;
+	case ESampleCount::Count4: return vk::SampleCountFlagBits::e4;
+	case ESampleCount::Count8: return vk::SampleCountFlagBits::e8;
+	case ESampleCount::Count16: return vk::SampleCountFlagBits::e16;
+	case ESampleCount::Count32: return vk::SampleCountFlagBits::e32;
+	case ESampleCount::Count64: return vk::SampleCountFlagBits::e64;
+	case ESampleCount::Count1:
+	default:
+		return vk::SampleCountFlagBits::e1;
+	}
+}
+
+vk::BlendFactor toVkBlendFactor(EBlendFactor factor)
+{
+	switch (factor)
+	{
+	case EBlendFactor::Zero: return vk::BlendFactor::eZero;
+	case EBlendFactor::SrcAlpha: return vk::BlendFactor::eSrcAlpha;
+	case EBlendFactor::OneMinusSrcAlpha: return vk::BlendFactor::eOneMinusSrcAlpha;
+	case EBlendFactor::One:
+	default:
+		return vk::BlendFactor::eOne;
+	}
+}
+
+vk::BlendOp toVkBlendOp(EBlendOp Op)
+{
+	switch (Op)
+	{
+	case EBlendOp::Subtract: return vk::BlendOp::eSubtract;
+	case EBlendOp::ReverseSubtract: return vk::BlendOp::eReverseSubtract;
+	case EBlendOp::Min: return vk::BlendOp::eMin;
+	case EBlendOp::Max: return vk::BlendOp::eMax;
+	case EBlendOp::Add:
+	default:
+		return vk::BlendOp::eAdd;
+	}
+}
+
+vk::ImageLayout toVkImageLayout(EResourceState State)
+{
+	switch (State)
+	{
+	case EResourceState::Undefined: return vk::ImageLayout::eUndefined;
+    case EResourceState::Common: return vk::ImageLayout::eGeneral;
+    case EResourceState::VertexBuffer: return vk::ImageLayout::eShaderReadOnlyOptimal;
+    case EResourceState::IndexBuffer: return vk::ImageLayout::eShaderReadOnlyOptimal;
+	case EResourceState::UniformBuffer: return vk::ImageLayout::eShaderReadOnlyOptimal;
+    case EResourceState::ConstantBuffer: return vk::ImageLayout::eShaderReadOnlyOptimal;
+	case EResourceState::StorageBuffer: return vk::ImageLayout::eGeneral;
+    case EResourceState::UnorderedAccess: return vk::ImageLayout::eGeneral;
+    case EResourceState::DepthWrite: return vk::ImageLayout::eDepthStencilAttachmentOptimal;
+    case EResourceState::DepthRead: return vk::ImageLayout::eDepthStencilReadOnlyOptimal;
+    case EResourceState::CopySrc: return vk::ImageLayout::eTransferSrcOptimal;
+    case EResourceState::CopyDst: return vk::ImageLayout::eTransferDstOptimal;
+    case EResourceState::Present: return vk::ImageLayout::ePresentSrcKHR;
+	case EResourceState::RenderTarget: return vk::ImageLayout::eColorAttachmentOptimal;
+	case EResourceState::PixelShaderResource: return vk::ImageLayout::eShaderReadOnlyOptimal;
+	case EResourceState::NonPixelShaderResource: return vk::ImageLayout::eShaderReadOnlyOptimal;
+	default:
+		return vk::ImageLayout::eGeneral;
+	}
+}
+
+vk::PipelineStageFlags toVkPipelineStage(EResourceState State)
+{
+	switch (State)
+	{
+	case EResourceState::VertexBuffer:
+	case EResourceState::IndexBuffer:
+		return vk::PipelineStageFlags::BitsType::eVertexInput;
+	case EResourceState::ConstantBuffer:
+	case EResourceState::UniformBuffer:
+	case EResourceState::StorageBuffer:
+		return vk::PipelineStageFlags::BitsType::eVertexShader | vk::PipelineStageFlags::BitsType::eFragmentShader | vk::PipelineStageFlags::BitsType::eComputeShader;
+	case EResourceState::UnorderedAccess:
+		return vk::PipelineStageFlags::BitsType::eComputeShader;
+	case EResourceState::RenderTarget:
+		return vk::PipelineStageFlags::BitsType::eColorAttachmentOutput;
+	case EResourceState::DepthWrite:
+	case EResourceState::DepthRead:
+		return vk::PipelineStageFlags::BitsType::eEarlyFragmentTests | vk::PipelineStageFlags::BitsType::eLateFragmentTests;
+	case EResourceState::CopySrc:
+	case EResourceState::CopyDst:
+		return vk::PipelineStageFlags::BitsType::eTransfer;
+	case EResourceState::Present:
+		return vk::PipelineStageFlags::BitsType::eBottomOfPipe;
+	case EResourceState::Undefined:
+	case EResourceState::Common:
+	default:
+		return vk::PipelineStageFlags::BitsType::eTopOfPipe;
+	}
+}
+
+vk::AccessFlags toVkAccessMask(EResourceState State)
+{
+	switch (State)
+	{
+	case EResourceState::VertexBuffer: return vk::AccessFlags::BitsType::eVertexAttributeRead;
+	case EResourceState::IndexBuffer: return vk::AccessFlags::BitsType::eIndexRead;
+	case EResourceState::ConstantBuffer: return vk::AccessFlags::BitsType::eUniformRead;
+	case EResourceState::UniformBuffer: return vk::AccessFlags::BitsType::eShaderRead;
+	case EResourceState::StorageBuffer: return vk::AccessFlags::BitsType::eShaderRead | vk::AccessFlags::BitsType::eShaderWrite;
+	case EResourceState::UnorderedAccess: return vk::AccessFlags::BitsType::eShaderRead | vk::AccessFlags::BitsType::eShaderWrite;
+	case EResourceState::RenderTarget: return vk::AccessFlags::BitsType::eColorAttachmentRead | vk::AccessFlags::BitsType::eColorAttachmentWrite;
+	case EResourceState::DepthWrite: return vk::AccessFlags::BitsType::eDepthStencilAttachmentRead | vk::AccessFlags::BitsType::eDepthStencilAttachmentWrite;
+	case EResourceState::DepthRead: return vk::AccessFlags::BitsType::eDepthStencilAttachmentRead;
+	case EResourceState::CopySrc: return vk::AccessFlags::BitsType::eTransferRead;
+	case EResourceState::CopyDst: return vk::AccessFlags::BitsType::eTransferWrite;
+	case EResourceState::Present:
+	case EResourceState::Undefined:
+	case EResourceState::Common:
+	default:
+		return vk::AccessFlags();
+	}
+}
+
+vk::SharingMode toVkSharingMode(ESharingMode Mode)
+{
+	return (Mode == ESharingMode::Exclusive) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
+}
+
+vk::MemoryPropertyFlags toVkMemoryPropertyFlags(EMemoryProperty Properties)
+{
+    vk::MemoryPropertyFlags Flags = {};
+
+    if (Properties.has(EMemoryProperty_t::DeviceLocal))
+        Flags |= vk::MemoryPropertyFlagBits::eDeviceLocal;
+    
+    if (Properties.has(EMemoryProperty_t::HostVisible))
+        Flags |= vk::MemoryPropertyFlagBits::eHostVisible;
+    
+    if (Properties.has(EMemoryProperty_t::HostCoherent))
+        Flags |= vk::MemoryPropertyFlagBits::eHostCoherent;
+    
+    if (Properties.has(EMemoryProperty_t::HostCached))
+        Flags |= vk::MemoryPropertyFlagBits::eHostCached;
+    
+    if (Properties.has(EMemoryProperty_t::LazilyAllocated))
+        Flags |= vk::MemoryPropertyFlagBits::eLazilyAllocated;
+
+    return Flags;
+}
+
+vk::ImageAspectFlags toVkImageAspectMask(ETextureAspect Aspect, EFormat TextureFormat)
+{
+	switch (Aspect)
+	{
+	case ETextureAspect::Color:
+		return vk::ImageAspectFlags::BitsType::eColor;
+	case ETextureAspect::Depth:
+		return vk::ImageAspectFlags::BitsType::eDepth;
+	case ETextureAspect::Stencil:
+		return vk::ImageAspectFlags::BitsType::eStencil;
+	case ETextureAspect::DepthStencil:
+		return vk::ImageAspectFlags::BitsType::eDepth | vk::ImageAspectFlags::BitsType::eStencil;
+	case ETextureAspect::Auto:
+	default:
+		if (isDepthStencilFormat(TextureFormat))
+		{
+			if (isDepthOnlyFormat(TextureFormat))
+			{
+				return vk::ImageAspectFlags::BitsType::eDepth;
+			}
+			if (isStencilOnlyFormat(TextureFormat))
+			{
+				return vk::ImageAspectFlags::BitsType::eStencil;
+			}
+			return vk::ImageAspectFlags::BitsType::eDepth | vk::ImageAspectFlags::BitsType::eStencil;
+		}
+		return vk::ImageAspectFlags::BitsType::eColor;
+	}
+}
+
+vk::ImageType toVkImageType(EImageDimension Dimension)
+{
+	switch (Dimension)
+	{
+	case EImageDimension::Texture1D:
+	case EImageDimension::Texture1DArray:
+		return vk::ImageType::e1D;
+	case EImageDimension::Texture3D:
+		return vk::ImageType::e3D;
+	case EImageDimension::Texture2D:
+	case EImageDimension::Texture2DArray:
+	case EImageDimension::Cube:
+	case EImageDimension::CubeArray:
+	default:
+		return vk::ImageType::e2D;
+	}
+}
+
+vk::PresentModeKHR toVkPresentMode(EPresentMode PresentMode)
+{
+	switch (PresentMode)
+	{
+	case EPresentMode::Immediate:
+		return vk::PresentModeKHR::eImmediate;
+		break;
+	case EPresentMode::Fifo:
+		return vk::PresentModeKHR::eFifo;
+		break;
+	case EPresentMode::FifoRelaxed:
+		return vk::PresentModeKHR::eFifoRelaxed;
+		break;
+	case EPresentMode::Mailbox:
+		return vk::PresentModeKHR::eMailbox;
+		break;
+	default:
+		throw std::runtime_error("Unsupported present mode.");
+	}
+}
+
+uint64_t clampCopySize(uint64_t Offset, uint64_t RequestedSize, uint64_t MaxSize)
+{
+	if (Offset >= MaxSize)
+	{
+		return 0;
+	}
+
+	const uint64_t available_size = MaxSize - Offset;
+	if (RequestedSize == 0)
+	{
+		return available_size;
+	}
+	return std::min<uint64_t>(RequestedSize, available_size);
+}
+
+
+
 void VulkanRHI::createVkInstance()
 {
     vk::ApplicationInfo app_info(

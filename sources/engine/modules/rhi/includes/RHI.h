@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <core/wrappers/Flag.hpp>
 #include <core/math/MathCommon.hpp>
+#include <generic_application/window/GenericWindow.hpp>
 
 namespace rhi
 {
@@ -48,17 +49,31 @@ enum class EResourceState {
 	NonPixelShaderResource
 };
 
+/**
+ * @note:
+ * > _UNorm: 表示线性颜色空间, 纹理采样时不会自动进行 gamma 校正, 适合后处理或需要线性混合的场景
+ * > _sRGB: 表示 sRGB 非线性空间, GPU 在写入时自动将线性值转换为 sRGB 编码, 在读取时反向转换, 
+ * >		符合标准显示器的 gamma 特性, 能避免颜色过暗或过亮
+ */
 enum class EFormat : uint32_t
 {
 	Undefined,
+	// 每通道 8 位无符号归一化整数, 取值范围 [0,1], 存储时直接映射, 适用于普通颜色纹理(如漫反射贴图),无 HDR 要求的渲染目标
 	RGBA8_UNorm,
+	// 与 RGBA8_UNorm 相同位宽, 但纹理采样时 GPU 会自动将数据从 sRGB 色彩空间转换到线性空间, 写入时自动反向转换。适合用于最终输出到显示器的交换链, 以及存储人眼感知颜色的纹理(如照片、UI)
 	RGBA8_sRGB,
+	// 与 RGBA8_UNorm 类似, 但通道顺序为 B,G,R,A. 这是许多平台(尤其是 Windows)交换链的默认格式，因为桌面合成器使用这种通道顺序
 	BGRA8_UNorm,
-	RGBA16_Float,
-	RGBA32_Float,
+	// 每通道 16 位浮点数 RGBA, 用于 HDR 中间渲染目标, 支持高动态范围
+	RGBA16_Float, 
+	// 每通道 32 位浮点数 RGBA, 用于高精度 HDR 渲染或科学计算
+	RGBA32_Float, 
+	// 16 位深度格式(无符号归一化), 通常用于深度缓冲, 精度较低
 	D16_UNorm,
-	D24_UNorm_S8_UInt,
-	D32_Float,
+	// 24 位深度(无符号归一化)+ 8 位模板(无符号整数), 经典深度模板格式, 兼容性好
+	D24_UNorm_S8_UInt, 
+	// 32 位浮点深度格式, 提供更高精度, 常用于现代渲染管线
+	D32_Float,    
 	// ...
 };
 
@@ -113,11 +128,11 @@ inline uint32_t calPixelSizeFormEFormat(EFormat Format)
 enum class EMemoryProperty_t : uint8_t
 {
     None           = 0,
-    DeviceLocal    = 1 << 0,  // 位于 GPU 显存，访问最快
-    HostVisible    = 1 << 1,  // CPU 可映射访问（必须配合 HostVisible 才能用 vkMapMemory）
-    HostCoherent   = 1 << 2,  // 自动同步 CPU/GPU 缓存（免去手动 Flush/Invalidate）
-    HostCached     = 1 << 3,  // CPU 缓存中保留副本（适合频繁读回的场景）
-    LazilyAllocated = 1 << 4, // 惰性分配（用于深度/模板缓冲，节省显存）
+    DeviceLocal    = 1 << 0,  // 位于 GPU 显存, 访问最快
+    HostVisible    = 1 << 1,  // CPU 可映射访问(必须配合 HostVisible 才能用 vkMapMemory)
+    HostCoherent   = 1 << 2,  // 自动同步 CPU/GPU 缓存(免去手动 Flush/Invalidate)
+    HostCached     = 1 << 3,  // CPU 缓存中保留副本(适合频繁读回的场景)
+    LazilyAllocated = 1 << 4, // 惰性分配(用于深度/模板缓冲, 节省显存)
 };
 
 using EMemoryProperty = core::wrappers::Flags<EMemoryProperty_t>;
@@ -163,8 +178,8 @@ enum class EImageDimension : uint8_t
     Texture1DArray,     // 1D 纹理数组
     Texture2D,          // 2D 纹理
     Texture2DArray,     // 2D 纹理数组
-    Texture3D,          // 3D 纹理(整个 Depth 当作第三维，不能单独切片)
-    Cube,               // 立方体贴图(6 个面，不可独立扩展)
+    Texture3D,          // 3D 纹理(整个 Depth 当作第三维, 不能单独切片)
+    Cube,               // 立方体贴图(6 个面, 不可独立扩展)
     CubeArray           // 立方体贴图数组(6 的整数倍面)
 };
 
@@ -359,6 +374,10 @@ public:
 	virtual ~RSwapchain() = default;
 
 	virtual void resize(uint32_t width, uint32_t height) = 0;
+
+	virtual void setFormat(EFormat) = 0;
+	virtual void setPresentMode(EPresentMode) = 0;
+	virtual void setGenericWindow(ui::IGenericWindow*) = 0;
 	virtual void present() = 0;
 
 };
