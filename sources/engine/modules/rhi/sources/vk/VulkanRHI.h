@@ -3,6 +3,7 @@
 #include <memory>
 #include <RHI.h>
 #include <vulkan/vulkan.hpp>
+#include "VulkanDeviceMemory.h"
 
 namespace rhi
 {
@@ -284,6 +285,7 @@ inline auto toVk(EMemoryProperty Properties) -> vk::MemoryPropertyFlags
     return Flags;
 }
 
+
 inline auto toVk(EImageDimension Dimension) -> vk::ImageType
 {
 	switch (Dimension)
@@ -387,7 +389,8 @@ inline auto toVk(ESurfaceTransform Transform) -> vk::SurfaceTransformFlagBitsKHR
 	}
 }
 
-vk::ImageAspectFlags toVkImageAspectMask(ETextureAspect Aspect, EFormat TextureFormat);
+
+vk::ImageAspectFlags toVkImageAspectMask(EImageAspect Aspect, EFormat TextureFormat);
 uint64_t clampCopySize(uint64_t Offset, uint64_t RequestedSize, uint64_t MaxSize);
 
 
@@ -412,6 +415,8 @@ private:
 	vk::UniqueInstance Instance;
 	vk::PhysicalDevice RealGPU;
 	vk::UniqueDevice LogicalDevice;
+
+
 };
 
 

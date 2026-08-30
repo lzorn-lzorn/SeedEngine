@@ -62,7 +62,7 @@ enum class EFormat : uint32_t
 	RGBA8_UNorm,
 	// 与 RGBA8_UNorm 相同位宽, 但纹理采样时 GPU 会自动将数据从 sRGB 色彩空间转换到线性空间, 写入时自动反向转换。适合用于最终输出到显示器的交换链, 以及存储人眼感知颜色的纹理(如照片、UI)
 	RGBA8_sRGB,
-	// 与 RGBA8_UNorm 类似, 但通道顺序为 B,G,R,A. 这是许多平台(尤其是 Windows)交换链的默认格式，因为桌面合成器使用这种通道顺序
+	// 与 RGBA8_UNorm 类似, 但通道顺序为 B,G,R,A. 这是许多平台(尤其是 Windows)交换链的默认格式, 因为桌面合成器使用这种通道顺序
 	BGRA8_UNorm,
 	// 每通道 16 位浮点数 RGBA, 用于 HDR 中间渲染目标, 支持高动态范围
 	RGBA16_Float, 
@@ -181,15 +181,6 @@ enum class EImageDimension : uint8_t
     Texture3D,          // 3D 纹理(整个 Depth 当作第三维, 不能单独切片)
     Cube,               // 立方体贴图(6 个面, 不可独立扩展)
     CubeArray           // 立方体贴图数组(6 的整数倍面)
-};
-
-enum class ETextureAspect : uint8_t
-{
-	Auto,
-	Color,
-	Depth,
-	Stencil,
-	DepthStencil
 };
 
 enum class ESharingMode
@@ -371,7 +362,7 @@ enum class EPresentMode {
 };
 
 // note: 交换链图像通常带有 alpha 通道(例如 VK_FORMAT_B8G8R8A8_SRGB), 
-// note: 但最终显示到屏幕时，窗口系统需要将这些图像与桌面或其他窗口进行合成
+// note: 但最终显示到屏幕时, 窗口系统需要将这些图像与桌面或其他窗口进行合成
 enum class  ECompositeAlpha
 {
 	Opaque,         // 图像视为不透明, 忽略 alpha 通道
@@ -388,6 +379,15 @@ enum class EColorSpace
 	Rec2020         // Rec. 2020 色彩空间, 用于超高清电视和 HDR 内容
 };
 
+enum class EImageAspect : uint8_t
+{
+	Auto,
+	Color,
+	Depth,
+	Stencil,
+	DepthStencil
+};
+
 class RBuffer;
 class RImage;
 class RSampler;
@@ -395,8 +395,121 @@ class RShader;
 class RPipeline;
 class RRenderPass;
 class RCommandList;
-
+class DeviceMemoryAllocator;
 class RTexture;
+class RImageView;
+class DeviceMemory;
+struct MemoryRequirements;
+
+
+struct MemoryRequirements {
+    uint64_t Size;           // 内存大小
+    uint64_t Alignment;      // 对齐要求
+	uint32_t MemoryTypeBits; 
+};
+
+class DeviceMemory
+{
+public:
+	enum class EState {
+		None,
+		InValid, // 持有内存已经释放
+		ReadOnly, // 未持有所有权, 仅读取
+		Writeable,// 未持有所有权, 可读写
+		OwnsMemory // 持有内存所有权, 可读写
+	};
+
+	DeviceMemory() = default;
+	virtual ~DeviceMemory() = default;
+	DeviceMemory(const DeviceMemory&) = delete;
+	DeviceMemory& operator=(const DeviceMemory&) = delete;
+	DeviceMemory(DeviceMemory&&) = default;
+	DeviceMemory& operator=(DeviceMemory&&) = default;
+
+	virtual void* map(DeviceSizeType Offset = 0, DeviceSizeType Size = 0) = 0;
+	virtual void unmap() = 0;
+
+	// note: 当内存被映射到主机地址空间(通过 map)后, CPU 和 GPU 对同一块内存的访问并不是自动同步的, 
+    // note: 尤其是对于非主机一致性(non-coherent)内存
+	// @breif: 确保 CPU 写入到映射内存的数据对 GPU 可见, 通常在 CPU 写入数据之后, 提交 GPU 命令读取该数据之前调用
+	virtual void flush(DeviceSizeType Offset, DeviceSizeType Size) = 0;
+	// @breif: 确保 GPU 写入到该内存的数据对 CPU 可见, 通常在 GPU 写入数据之后, CPU 读取该数据之前调用
+	virtual void invalidate(DeviceSizeType Offset, DeviceSizeType Size) = 0;
+	virtual void release() = 0;
+
+	virtual MemoryRequirements getMemoryRequirements() const = 0;
+	virtual EMemoryProperty getMemoryProperty() const = 0;
+
+	EState getState() const { return OwnershipState; }
+
+protected:
+	EState OwnershipState { EState::None };
+};
+
+class DeviceMemoryAllocator
+{
+public:
+	virtual ~DeviceMemoryAllocator() = default;
+
+	virtual std::shared_ptr<DeviceMemory> allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property) = 0;
+	virtual void freeMemory(std::shared_ptr<DeviceMemory> Memory) = 0;
+};
+
+
+class RImage
+{
+public:
+	struct Descriptor_t
+	{
+		EFormat Format;
+		EImageDimension Dimension;
+		uint32_t Width;
+		uint32_t Height;
+		uint32_t Depth;
+		uint32_t MipLevels;
+		uint32_t ArrayLayers;
+		ESharingMode SharingMode;
+		EMemoryProperty MemoryProperty;
+		EImageUsage Usage;
+		ESampleCount SampleCount;
+	};
+
+public:
+	static std::shared_ptr<RImage> create(const Descriptor_t& Desc,  DeviceMemoryAllocator* Allocator = nullptr);
+
+	static std::shared_ptr<RImage> createUnbound(const Descriptor_t& Desc);
+	
+
+	virtual ~RImage() = default;
+	const Descriptor_t& getDescriptor() const { return Descriptor; }
+
+protected:
+	RImage(const Descriptor_t& Desc) : Descriptor(Desc) {}
+	
+	virtual void initializeImage() = 0;
+	virtual void allocateMemory(DeviceMemoryAllocator* Allocator) = 0;
+	virtual void bindMemory() = 0;
+
+	Descriptor_t Descriptor;
+};
+
+class RImageView
+{
+public:
+	struct Descriptor_t
+	{
+		std::shared_ptr<RImage> Image;
+		EFormat Format;
+		EImageAspect Aspect;
+		uint32_t BaseMipLevel;
+		uint32_t MipLevelCount;
+		uint32_t BaseArrayLayer;
+		uint32_t ArrayLayerCount;
+	};
+
+	static std::shared_ptr<RImageView> create(const Descriptor_t& Desc);
+	virtual ~RImageView() = default;
+};
 
 class RSwapchain
 {
