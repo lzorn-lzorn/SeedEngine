@@ -24,6 +24,7 @@ struct WindowDescriptor
 	std::string Title;
 	core::math::Vec2i LeftTopPoint;
 	int Width, Height;
+	EWindowType WindowType;
 
 	bool IsResizable;
 	bool IsVisiable;
@@ -51,6 +52,9 @@ public:
 
 	[[nodiscard]] virtual UIVector getPosition() = 0;
 	[[nodiscard]] virtual UIVector getSize() = 0;
+	[[nodiscard]] virtual int32_t getWidth() = 0;
+	[[nodiscard]] virtual int32_t getHeight() = 0;
+	[[nodiscard]] virtual EWindowType getWindowType() = 0;
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 };
 

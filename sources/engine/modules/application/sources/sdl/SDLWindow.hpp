@@ -30,9 +30,13 @@ public:
 	[[nodiscard]] ui::WindowId_t getWindowId() override;
 	[[nodiscard]] ui::UIVector getPosition() override;
 	[[nodiscard]] ui::UIVector getSize() override;
+	[[nodiscard]] virtual int32_t getWidth() override { return getSize().x(); }
+	[[nodiscard]] virtual int32_t getHeight() override { return getSize().y(); }
+	[[nodiscard]] virtual ui::EWindowType getWindowType() override { return WindowType; }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
 private:
 	SDL_Window* NativeWindow;
+	ui::EWindowType WindowType;
 };
 
 } // namespace app::details

@@ -1,15 +1,17 @@
 #pragma once
 #include <RHI.h>
+#include <expected>
 #include <vulkan/vulkan.hpp>
 #include <generic_application/window/GenericWindow.hpp>
 #include "VulkanRHI.h"
 #include "vulkan/vulkan.hpp"
+
 namespace rhi
 {
 
 class VulkanSwapchain final : public RSwapchain
 {
-public:
+private:
 	struct SwapchainSupportDetails
 	{
 		vk::SurfaceCapabilitiesKHR Capabilities;
@@ -31,31 +33,33 @@ public:
 		vk::SwapchainKHR OldSwapchain {VK_NULL_HANDLE}; // 重建交换链时, 用于传递旧的交换链以复用资源
 	};
 public:
-	VulkanSwapchain(vk::PhysicalDevice& RealGPU, vk::Instance& VulkanInstance);
+	VulkanSwapchain(vk::PhysicalDevice&, vk::Instance&, vk::Device&);
 	virtual ~VulkanSwapchain() = default;
 
-	void setGenericWindow(ui::IGenericWindow*) override;
-	void setFormat(EFormat) override;
-	void setPresentMode(EPresentMode) override;
-	
-
-	void resize(uint32_t width, uint32_t height) override;
+	void resize(uint32_t Width, uint32_t Height) override;
 	void present() override;
 
+	vk::SwapchainKHR getVkSwapchain() { return Swapchain; }
+	vk::SurfaceKHR getSurface() { return Surface; }
 
-	void setPhysicalDevice(vk::PhysicalDevice& RealGPU) { RealGPU = RealGPU; }
-	void setVkInstance(vk::Instance& Instance) { VulkanInstance = Instance; }
 private:
-	void createSurface();
-	void createVkSwapchain();
+	void initializeVkSurface();
+	void initializeVkSwapchain();
 	SwapchainSupportDetails querySwapChainSupport();
-	void setSwapExtent();
+	std::expected<bool, std::string> checkSwapChainSupport();
 private:
-	ui::IGenericWindow* NativeWindow;
 	vk::PhysicalDevice& RealGPU;
 	vk::Instance& VulkanInstance;
+	vk::Device& VulkanDevice;
 	vk::SurfaceKHR Surface;
-	SwapchainProperties Properties;
+	vk::SwapchainKHR Swapchain;
+
+	vk::Format SwapchainImageFormat;
+	vk::Extent2D SwapchainExtent;
+	// TODO: 存 RHI 资源对象?
+	std::vector<vk::Image> SwapchainImages;
+	std::vector<vk::ImageView> SwapchainImageViews;
+    std::vector<vk::Framebuffer> SwapChainFramebuffers;
 };
 
 }

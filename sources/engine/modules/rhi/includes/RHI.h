@@ -194,6 +194,7 @@ enum class ETextureAspect : uint8_t
 
 enum class ESharingMode
 {
+	Auto,        
 	Exclusive,   // GPU 独占模式, 性能更高
 	Concurrent   // GPU 并发模式, 允许多个队列同时访问资源, 但性能较低
 };
@@ -212,6 +213,18 @@ enum class EShaderStage_t : uint32_t
 };
 
 using EShaderStage = core::wrappers::Flags<EShaderStage_t>;
+
+enum class ESurfaceTransform
+{
+	Identity,
+	Rotate90,
+	Rotate180,
+	Rotate270,
+	HorizontalMirror,
+	HorizontalMirrorRotate90,
+	HorizontalMirrorRotate180,
+	HorizontalMirrorRotate270
+};
 
 
 enum class ECommandQueueType
@@ -357,6 +370,24 @@ enum class EPresentMode {
     Mailbox
 };
 
+// note: 交换链图像通常带有 alpha 通道(例如 VK_FORMAT_B8G8R8A8_SRGB), 
+// note: 但最终显示到屏幕时，窗口系统需要将这些图像与桌面或其他窗口进行合成
+enum class  ECompositeAlpha
+{
+	Opaque,         // 图像视为不透明, 忽略 alpha 通道
+	PreMultiplied,	// alpha 通道按预乘方式参与合成, 即 RGB 分量已经乘上了 alpha
+	PostMultiplied, // alpha 通道按非预乘方式参与合成, RGB 与 alpha 独立
+	Inherit         // 表示由窗口系统继承之前的 alpha 设置
+};
+
+enum class EColorSpace
+{
+	SRGB_Nonlinear, // sRGB 非线性空间, 适合最终输出到显示器的图像
+	AdobeRGB,       // Adobe RGB 色彩空间, 提供更广的色域
+	DCIP3,          // DCI-P3 色彩空间, 常用于数字电影投影
+	Rec2020         // Rec. 2020 色彩空间, 用于超高清电视和 HDR 内容
+};
+
 class RBuffer;
 class RImage;
 class RSampler;
@@ -370,15 +401,93 @@ class RTexture;
 class RSwapchain
 {
 public:
+	struct SwapchainProperties {
+		EFormat Format { EFormat::RGBA8_sRGB }; 
+		EColorSpace ColorSpace {EColorSpace::SRGB_Nonlinear};
+		EPresentMode PresentMode {EPresentMode::Mailbox};
+		ESurfaceTransform PreTransform {ESurfaceTransform::Identity}; // 表面变换(如旋转 90 度、水平翻转)
+		ECompositeAlpha CompositeAlpha {ECompositeAlpha::Opaque}; // 与窗口系统合成的 alpha 通道处理方式
+		EImageUsage ImageUsage;
+		uint32_t ImageCount;
+		ESharingMode ImageSharingMode {ESharingMode::Auto };
+		bool Clipped {true};
+		RSwapchain* OldSwapchain {nullptr}; // 重建交换链时, 用于传递旧的交换链以复用资源
+	};
+
+public:
 	RSwapchain() = default;
 	virtual ~RSwapchain() = default;
-
+	
+	virtual void present() = 0;
 	virtual void resize(uint32_t width, uint32_t height) = 0;
 
-	virtual void setFormat(EFormat) = 0;
-	virtual void setPresentMode(EPresentMode) = 0;
-	virtual void setGenericWindow(ui::IGenericWindow*) = 0;
-	virtual void present() = 0;
+	RSwapchain& setFormat(EFormat Format)
+	{
+		Properties.Format = Format;
+		return *this;
+	}
+
+	RSwapchain& setPresentMode(EPresentMode PresentMode)
+	{
+		Properties.PresentMode = PresentMode;
+		return *this;
+	}
+
+	RSwapchain& setEColorSpace(EColorSpace ColorSpace)
+	{
+		Properties.ColorSpace = ColorSpace;
+		return *this;
+	}
+
+	RSwapchain& setESurfaceTransform(ESurfaceTransform PreTransform)
+	{
+		Properties.PreTransform = PreTransform;
+		return *this;
+	}
+
+	RSwapchain& setECompositeAlpha(ECompositeAlpha CompositeAlpha)
+	{
+		Properties.CompositeAlpha = CompositeAlpha;
+		return *this;
+	}
+
+	RSwapchain& setEImageUsage(EImageUsage ImageUsage)
+	{
+		Properties.ImageUsage = ImageUsage;
+		return *this;
+	}
+
+	RSwapchain& setuint32_t(uint32_t ImageCount)
+	{
+		Properties.ImageCount = ImageCount;
+		return *this;
+	}
+
+	RSwapchain& setESharingMode(ESharingMode ImageSharingMode)
+	{
+		Properties.ImageSharingMode = ImageSharingMode;
+		return *this;
+	}
+
+	RSwapchain& setClipped(bool Clipped)
+	{
+		Properties.Clipped = Clipped;
+		return *this;
+	}
+
+	RSwapchain& setGenericWindow(ui::IGenericWindow* InNativeWindow)
+	{
+		NativeWindow = InNativeWindow;
+		return *this;
+	}
+
+	ui::IGenericWindow* getNativeWindow() const { return NativeWindow; }
+	SwapchainProperties getProperties() const { return Properties; }
+	int32_t getWidth() const { return NativeWindow->getWidth(); }
+	int32_t getHeight() const { return NativeWindow->getHeight(); }
+private:
+	ui::IGenericWindow* NativeWindow;
+	SwapchainProperties Properties;
 
 };
 
