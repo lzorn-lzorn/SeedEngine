@@ -9,6 +9,7 @@ namespace rhi
 
 class VulkanDeviceMemory final : public DeviceMemory
 {
+	friend class VulkanDeviceMemoryDeleter;
 	friend class VulkanDeviceMemoryPool;
 	friend class VulkanDeviceMemoryAllocator;
 public:
@@ -50,40 +51,52 @@ private:
 	
 };
 
+// @note: 线程不安全只能在 RHI 线程中使用
 class VulkanDeviceMemoryPool final
 {
-	struct VulkanDeviceMemoryDeleter
-	{
-		void operator()(VulkanDeviceMemory* Memory) const
-		{
-			if (Memory)
-			{
-				Memory->reset();
-				VulkanDeviceMemoryPool::self().FreeList.emplace_back(Memory, VulkanDeviceMemoryDeleter{ });
-			}
-		}
-	};
-	using value_type = std::unique_ptr<VulkanDeviceMemory, VulkanDeviceMemoryDeleter>;
-
+	using value_type = VulkanDeviceMemory;
+	using pointer = VulkanDeviceMemory*;
+	constexpr static int32_t InitialSize = 512;
 public:
 	static VulkanDeviceMemoryPool& self() {
 		static VulkanDeviceMemoryPool instance;
 		return instance;
 	}
 
-	~VulkanDeviceMemoryPool() = default;
+	~VulkanDeviceMemoryPool();
 	VulkanDeviceMemoryPool(const VulkanDeviceMemoryPool&) = delete;
 	VulkanDeviceMemoryPool& operator=(const VulkanDeviceMemoryPool&) = delete;
 
-	VulkanDeviceMemory const & allocateMemory();
+	VulkanDeviceMemory& allocateMemory();
+	
+	void reclaim(VulkanDeviceMemory* Memory);
+
+	struct Block {
+		pointer MemoryBlock;
+		size_t Count;
+	};
 private:
-	VulkanDeviceMemoryPool() = default;
+	VulkanDeviceMemoryPool();
 
 	void expand();
-	std::list<value_type> FreeList;
-	std::list<value_type> UsedList;
+	std::list<pointer> FreeList;
+	std::vector<Block> Blocks; // 原始内存块及对象数量
+	std::list<pointer> UsedList;                     // 已分配出去的对象
+	size_t Capacity { InitialSize };                 // 当前池总容量
 };
 
+class VulkanDeviceMemoryDeleter
+{
+public:
+    VulkanDeviceMemoryDeleter() = default;
+    VulkanDeviceMemoryDeleter(class VulkanDeviceMemoryAllocator*, VulkanDeviceMemoryPool*);
+
+    void operator()(VulkanDeviceMemory* ptr) const;
+
+private:
+    class VulkanDeviceMemoryAllocator* Allocator = nullptr;
+    VulkanDeviceMemoryPool* Pool = nullptr;
+};
 
 class VulkanDeviceMemoryAllocator final : public DeviceMemoryAllocator
 {
