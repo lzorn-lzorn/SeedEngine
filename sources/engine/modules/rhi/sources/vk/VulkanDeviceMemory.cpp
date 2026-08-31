@@ -61,7 +61,7 @@ void VulkanDeviceMemory::flush(DeviceSizeType Offset, DeviceSizeType Size)
     range.setOffset(Offset);
     range.setSize(Size == 0 ? VK_WHOLE_SIZE : Size);
 
-    // 刷新 CPU 写入的数据，使其对 GPU 可见
+    // 刷新 CPU 写入的数据, 使其对 GPU 可见
     device.flushMappedMemoryRanges({ range });
 }
 void VulkanDeviceMemory::invalidate(DeviceSizeType Offset, DeviceSizeType Size)
@@ -84,6 +84,29 @@ EMemoryProperty VulkanDeviceMemory::getMemoryProperty() const
 {
 	return Property;
 }
+
+void VulkanDeviceMemoryPool::expand()
+{
+	// 使用两倍扩容策略:
+	// TODO: 使用自定义的内存分配器接口, 而不是直接使用 malloc
+	size_t new_size = std::max<size_t>(1, UsedList.size() * 2);
+	VulkanDeviceMemory* new_memory = (VulkanDeviceMemory*) std::malloc(sizeof(VulkanDeviceMemory) * new_size);
+	for (size_t i = 0; i < new_size; ++i) {
+		// std::list<std::unique_ptr<VulkanDeviceMemory>> FreeList;
+		//
+	}
+
+
+}
+VulkanDeviceMemory const& VulkanDeviceMemoryPool::allocateMemory()
+{
+	if (FreeList.empty()) {
+		expand();
+	}
+	// TODO:
+}
+
+
 
 
 std::shared_ptr<DeviceMemory> VulkanDeviceMemoryAllocator::allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property)
