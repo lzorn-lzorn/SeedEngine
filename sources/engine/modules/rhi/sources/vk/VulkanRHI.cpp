@@ -10,15 +10,27 @@
 #include <stdexcept>
 #include <cstring>
 
+#ifdef USE_SDL
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#endif
+
 namespace 
 {
 static std::vector<const char*> getRequiredInstanceExtensions()
 {
- 	// 若无窗口系统, 可不启用任何实例扩展; 否则按平台添加
     std::vector<const char*> extensions;
-    // example Windows:
-    // extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-    // extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+#ifdef USE_SDL
+    Uint32 extension_count = 0;
+    const char* const* sdl_extensions = SDL_Vulkan_GetInstanceExtensions(&extension_count);
+    if (!sdl_extensions)
+    {
+        throw std::runtime_error(std::string("Failed to query SDL Vulkan extensions: ") + SDL_GetError());
+    }
+    extensions.assign(sdl_extensions, sdl_extensions + extension_count);
+#else
+    throw std::runtime_error("No generic window backend is available for Vulkan surface creation.");
+#endif
     return extensions;
 }
 
@@ -145,6 +157,36 @@ uint64_t clampCopySize(uint64_t Offset, uint64_t RequestedSize, uint64_t MaxSize
 	return std::min<uint64_t>(RequestedSize, available_size);
 }
 
+VulkanRHI::~VulkanRHI()
+{
+    IsInitialized = false;
+    LogicalDevice.reset();
+    if (Surface && Instance)
+    {
+        Instance->destroySurfaceKHR(Surface);
+        Surface = VK_NULL_HANDLE;
+    }
+    Instance.reset();
+}
+
+void VulkanRHI::initialize(const ui::GenericWindowPointer& Window)
+{
+    if (!Window || !Window->getNativeHandle())
+    {
+        throw std::invalid_argument("Vulkan initialization requires a valid generic window.");
+    }
+    if (IsInitialized)
+    {
+        return;
+    }
+
+    createVkInstance();
+    createVkSurface(Window);
+    pickPhysicalDevice();
+    createLogicalDevice();
+    IsInitialized = true;
+}
+
 
 
 void VulkanRHI::createVkInstance()
@@ -194,6 +236,26 @@ void VulkanRHI::createVkInstance()
     Instance = vk::createInstanceUnique(create_info);
 }
 
+void VulkanRHI::createVkSurface(const ui::GenericWindowPointer& Window)
+{
+#ifdef USE_SDL
+    auto* sdl_window = static_cast<SDL_Window*>(Window->getNativeHandle());
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    if (!SDL_Vulkan_CreateSurface(
+        sdl_window,
+        static_cast<VkInstance>(Instance.get()),
+        nullptr,
+        &surface))
+    {
+        throw std::runtime_error(std::string("Failed to create SDL Vulkan surface: ") + SDL_GetError());
+    }
+    Surface = vk::SurfaceKHR(surface);
+#else
+    (void)Window;
+    throw std::runtime_error("No generic window backend is available for Vulkan surface creation.");
+#endif
+}
+
 void VulkanRHI::pickPhysicalDevice()
 {
 	if (!Instance)
@@ -208,12 +270,7 @@ void VulkanRHI::pickPhysicalDevice()
 		throw std::runtime_error("No Vulkan physical devices found.");
 	}
 
-    // TODO: 需要支持的物理特性
     vk::PhysicalDeviceFeatures required_features{};
-    required_features.samplerAnisotropy = VK_TRUE;
-    required_features.fillModeNonSolid  = VK_TRUE;
-    required_features.geometryShader    = VK_TRUE;
-    required_features.tessellationShader = VK_TRUE;
 
     // TODO: 需要支持的设备扩展
     std::vector<const char*> requiredDeviceExtensions = 
@@ -245,15 +302,16 @@ void VulkanRHI::pickPhysicalDevice()
         // ---- 检查队列族(至少需要图形和计算) ----
         auto queue_families = device.getQueueFamilyProperties();
         bool has_graphics = false;
-        bool has_compute = false;
-        for (const auto& qf : queue_families) 
+        bool has_present = false;
+        for (uint32_t family_index = 0; family_index < queue_families.size(); ++family_index)
 		{
+            const auto& qf = queue_families[family_index];
             if (qf.queueFlags & vk::QueueFlagBits::eGraphics) has_graphics = true;
-            if (qf.queueFlags & vk::QueueFlagBits::eCompute)  has_compute  = true;
+            if (device.getSurfaceSupportKHR(family_index, Surface)) has_present = true;
         }
-        if (!has_graphics || !has_compute) 
+        if (!has_graphics || !has_present) 
 		{
-            std::println("Device {} lacks required queue families, skipping.", 
+            std::println("Device {} lacks graphics or presentation support, skipping.", 
 				device.getProperties().deviceName);
             continue;
         }
@@ -271,7 +329,7 @@ void VulkanRHI::pickPhysicalDevice()
 	}
     RealGPU = best_device;
     std::println("Selected device: {} (score {})\n", 
-                RealGPU.getProperties().deviceName, best_score);
+				RealGPU.getProperties().deviceName.data(), best_score);
 }
 
 void VulkanRHI::createLogicalDevice()
@@ -298,32 +356,25 @@ void VulkanRHI::createLogicalDevice()
 		throw std::runtime_error("No graphics queue family found.");
 	}
 
-    // ---- 查找计算队列族（优先独立的） ----
-    uint32_t compute_queue_family = UINT32_MAX;
-    for (uint32_t i = 0; i < queue_families.size(); ++i) {
-        if ((queue_families[i].queueFlags & vk::QueueFlagBits::eCompute) &&
-            !(queue_families[i].queueFlags & vk::QueueFlagBits::eGraphics)) 
-		{
-            compute_queue_family = i;
-            break;
-        }
-    }
-    if (compute_queue_family == UINT32_MAX) 
+    // ---- 查找呈现队列族 ----
+    uint32_t present_queue_family = UINT32_MAX;
+    for (uint32_t i = 0; i < queue_families.size(); ++i)
 	{
-        if (queue_families[graphics_queue_family].queueFlags & vk::QueueFlagBits::eCompute)
+        if (RealGPU.getSurfaceSupportKHR(i, Surface))
         {
-			compute_queue_family = graphics_queue_family;
+            present_queue_family = i;
+            break;
 		}
-        else
-        {
-			throw std::runtime_error("No compute-capable queue family found.");
-		}
+    }
+    if (present_queue_family == UINT32_MAX)
+    {
+        throw std::runtime_error("No presentation queue family found.");
     }
 
     // ---- 准备队列创建信息 ----
     std::vector<vk::DeviceQueueCreateInfo> queue_createInfos;
     float queue_priority = 1.0f;
-    std::set<uint32_t> unique_queue_families = { graphics_queue_family, compute_queue_family };
+    std::set<uint32_t> unique_queue_families = { graphics_queue_family, present_queue_family };
     for (uint32_t family : unique_queue_families) 
 	{
         vk::DeviceQueueCreateInfo queue_creation_info(
@@ -335,28 +386,18 @@ void VulkanRHI::createLogicalDevice()
         queue_createInfos.push_back(queue_creation_info);
     }
 
-    // ---- 启用特性(与物理设备检查保持一致) ----
     vk::PhysicalDeviceFeatures enabled_features{};
-    enabled_features.samplerAnisotropy = VK_TRUE;
-    enabled_features.fillModeNonSolid  = VK_TRUE;
-    enabled_features.geometryShader    = VK_TRUE;
 
     // ---- 启用扩展(与之前检查对应) ----
     std::vector<const char*> enabledExtensions;
     enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
-	const char* validation_layer = "VK_LAYER_KHRONOS_validation";
     vk::DeviceCreateInfo device_creation_info(
         vk::DeviceCreateFlags(),
         static_cast<uint32_t>(queue_createInfos.size()),
         queue_createInfos.data(),
-#ifndef NDEBUG
-        1, 
-		&validation_layer,
-#else
 		0,
 		nullptr,
-#endif
         static_cast<uint32_t>(enabledExtensions.size()),
         enabledExtensions.empty() ? nullptr : enabledExtensions.data(),
         &enabled_features

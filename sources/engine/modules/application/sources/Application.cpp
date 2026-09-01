@@ -4,6 +4,10 @@
 namespace app 
 {
 
+std::unique_ptr<ui::IGenericApplication> createGenericApplication()
+{
+	return std::make_unique<details::SDLApplication>();
+}
 
 void Application::initialize()
 {

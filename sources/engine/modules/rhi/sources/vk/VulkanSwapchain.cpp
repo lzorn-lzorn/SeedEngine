@@ -4,6 +4,11 @@
 #include <vulkan/vulkan.hpp>
 #include <cassert>
 
+#ifdef USE_SDL
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#endif
+
 namespace 
 {
 
@@ -116,13 +121,17 @@ void VulkanSwapchain::initializeVkSurface()
 #ifdef USE_SDL
 	{
 		// SDL3 创建 Vulkan Surface
-		SDL_Window* SDLWindow = static_cast<SDL_Window*>(NativeWindow->getNativeHandle());
+		SDL_Window* SDLWindow = static_cast<SDL_Window*>(getNativeWindow()->getNativeHandle());
 		if (SDLWindow == nullptr)
 		{
 			throw std::runtime_error("Failed to get SDL_Window from GenericWindow.");
 		}
 		VkSurfaceKHR vkSurface;
-		if (SDL_Vulkan_CreateSurface(SDLWindow, VulkanRHI::self().getVkInstance(), &vkSurface) == VK_FALSE)
+		if (!SDL_Vulkan_CreateSurface(
+			SDLWindow,
+			static_cast<VkInstance>(VulkanInstance),
+			nullptr,
+			&vkSurface))
 		{
 			throw std::runtime_error("Failed to create Vulkan surface using SDL.");
 		}

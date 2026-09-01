@@ -15,8 +15,8 @@ namespace app::details
 class SDLWindow final : public ui::IGenericWindow
 {
 public:
-	explicit SDLWindow(SDL_Window* InNativeWindow) 
-		: NativeWindow(InNativeWindow) {}
+	explicit SDLWindow(SDL_Window* InNativeWindow, ui::EWindowType InWindowType) 
+		: NativeWindow(InNativeWindow), WindowType(InWindowType) {}
 	~SDLWindow() override;
 	
 	void show() override;
@@ -30,9 +30,9 @@ public:
 	[[nodiscard]] ui::WindowId_t getWindowId() override;
 	[[nodiscard]] ui::UIVector getPosition() override;
 	[[nodiscard]] ui::UIVector getSize() override;
-	[[nodiscard]] virtual int32_t getWidth() override { return getSize().x(); }
-	[[nodiscard]] virtual int32_t getHeight() override { return getSize().y(); }
-	[[nodiscard]] virtual ui::EWindowType getWindowType() override { return WindowType; }
+	[[nodiscard]] int32_t getWidth() override { return getSize().x(); }
+	[[nodiscard]] int32_t getHeight() override { return getSize().y(); }
+	[[nodiscard]] ui::EWindowType getWindowType() override { return WindowType; }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
 private:
 	SDL_Window* NativeWindow;

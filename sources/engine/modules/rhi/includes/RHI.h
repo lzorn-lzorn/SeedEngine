@@ -634,6 +634,8 @@ public:
 	IRHI() = default;
 	virtual ~IRHI() = default;
 	
+	virtual void initialize(const ui::GenericWindowPointer& Window) = 0;
+	virtual bool isInitialized() const noexcept = 0;
 	virtual ESupportedBackendAPI getBackendAPI() const = 0;
 	virtual std::shared_ptr<RDevice> createDevice() = 0;
 };

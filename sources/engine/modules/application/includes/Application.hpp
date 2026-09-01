@@ -9,6 +9,8 @@
 namespace app
 {
 
+[[nodiscard]] std::unique_ptr<ui::IGenericApplication> createGenericApplication();
+
 
 class Application final
 	: public ui::IApplicationMessageHandler

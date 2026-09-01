@@ -15,6 +15,7 @@ if(TRUE)
         set(GRAPHICS_BACKEND "Vulkan")
         set(GRAPHICS_API_VULKAN TRUE)
         file(GLOB_RECURSE SOURCES_LIST
+			${CMAKE_CURRENT_SOURCE_DIR}/sources/RHIServer.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.hpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.h
@@ -170,6 +171,12 @@ elseif(GRAPHICS_API_DX9)
 
 elseif(GRAPHICS_API_VULKAN)
     target_compile_definitions(RHI PRIVATE GRAPHICS_API_VULKAN=1)
+    if(USE_SDL)
+        target_compile_definitions(RHI PRIVATE USE_SDL=1)
+        target_link_libraries(RHI PRIVATE SDL3::SDL3)
+    else()
+        message(FATAL_ERROR "Vulkan RHI currently requires the SDL generic window backend")
+    endif()
     # 专门伺候 <windows.h> 这个头文件:
     # VK_USE_PLATFORM_WIN32_KHR: 用于启动 win32 surface
     # NOMINMAX: 避免 windows.h 定义 min/max 宏

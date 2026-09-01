@@ -23,9 +23,11 @@ SDLApplication::makeWindow(const ui::WindowDescriptor& Descriptor)
 {
 	SDL_WindowFlags flags = 0;
 	if (Descriptor.IsResizable) flags |= SDL_WINDOW_RESIZABLE;
-	if (Descriptor.HasBorder) flags |= SDL_WINDOW_BORDERLESS;
-	if (Descriptor.IsVisiable) flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
-	else flags |= SDL_WINDOW_HIDDEN;
+	if (!Descriptor.HasBorder) flags |= SDL_WINDOW_BORDERLESS;
+	flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+	flags |= SDL_WINDOW_VULKAN;
+	if (Descriptor.WindowType == ui::EWindowType::Fullscreen) flags |= SDL_WINDOW_FULLSCREEN;
+	if (!Descriptor.IsVisiable) flags |= SDL_WINDOW_HIDDEN;
 
 	SDL_Window* native_window = SDL_CreateWindow(
 		Descriptor.Title.c_str(),
@@ -45,15 +47,15 @@ SDLApplication::makeWindow(const ui::WindowDescriptor& Descriptor)
 		Descriptor.LeftTopPoint.y()
 	);
 
-	auto window = std::make_shared<SDLWindow>(native_window);
-	Windows.emplace(SDL_GetWindowID(native_window), std::weak_ptr<SDLWindow>());
+	auto window = std::make_shared<SDLWindow>(native_window, Descriptor.WindowType);
+	Windows.insert_or_assign(SDL_GetWindowID(native_window), window);
 
 	return window;
 }
 
 SDLApplication::SDLApplication()
 {
-	if(!SDL_Init(SDL_INIT_VIDEO) || !SDL_Init(SDL_INIT_GAMEPAD))
+	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
 	{
 		throw std::runtime_error(std::string("Failed to initialize SDL: ") + SDL_GetError());
 	}
@@ -103,6 +105,7 @@ void SDLApplication::handleEvent(const SDL_Event& Event)
 		break;
 	case SDL_EVENT_WINDOW_RESIZED:
 		MessageHandler->onWindowResize();
+		break;
 	case SDL_EVENT_WINDOW_MINIMIZED:
 		MessageHandler->onWindowMinimized();
 		break;
@@ -126,6 +129,7 @@ void SDLApplication::handleEvent(const SDL_Event& Event)
 		break;
 	case SDL_EVENT_WINDOW_FOCUS_LOST:
 		MessageHandler->onMouseFocusLost();
+		break;
 	case SDL_EVENT_KEY_DOWN:
 		MessageHandler->onKeyDown();
 		break;
@@ -172,6 +176,34 @@ void SDLApplication::setMessageHandler(std::shared_ptr<ui::IApplicationMessageHa
 std::shared_ptr<ui::IApplicationMessageHandler> SDLApplication::getMessageHandler() const
 {
 	return MessageHandler;
+}
+
+void SDLApplication::setCapture(const ui::GenericWindowPointer& Window)
+{
+	if (!Window || !Window->getNativeHandle())
+	{
+		throw std::invalid_argument("Mouse capture requires a valid generic window.");
+	}
+	auto* native_window = static_cast<SDL_Window*>(Window->getNativeHandle());
+	if (!SDL_SetWindowMouseGrab(native_window, true))
+	{
+		throw std::runtime_error(std::string("Failed to capture mouse: ") + SDL_GetError());
+	}
+}
+
+void SDLApplication::releaseCapture()
+{
+	for (auto it = Windows.begin(); it != Windows.end(); ++it)
+	{
+		if (auto window = it->second.lock())
+		{
+			auto* native_window = static_cast<SDL_Window*>(window->getNativeHandle());
+			if (!SDL_SetWindowMouseGrab(native_window, false))
+			{
+				throw std::runtime_error(std::string("Failed to release mouse capture: ") + SDL_GetError());
+			}
+		}
+	}
 }
 
 ui::GenericWindowPointer SDLApplication::findWindow(SDL_WindowID Id) const

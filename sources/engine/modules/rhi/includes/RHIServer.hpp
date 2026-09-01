@@ -19,14 +19,20 @@ public:
 	RHIServer(RHIServer&&) = delete;
 	RHIServer& operator=(RHIServer&&) = delete;
 
+	void initialize(ESupportedBackendAPI BackendAPI, const ui::GenericWindowPointer& Window);
+	void shutdown();
+	[[nodiscard]] bool isInitialized() const noexcept;
+	[[nodiscard]] IRHI* getRHI() const noexcept { return RHIInstance.get(); }
+
 private:
 	RHIServer();
 	~RHIServer();
 
 	std::unique_ptr<IRHI> RHIInstance;
-	std::unique_ptr<RDevice> DeviceInstance;
+	std::shared_ptr<RDevice> DeviceInstance;
 
 };
 
+using RenderServer = RHIServer;
 
 }

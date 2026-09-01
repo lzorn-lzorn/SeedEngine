@@ -22,6 +22,13 @@ if(USE_SDL)
 		entries/sdl/Main.cpp
 	)
 	target_link_libraries(${TARGET_NAME} PRIVATE SDL3::SDL3)
+	if(WIN32)
+		add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+				$<TARGET_FILE:SDL3-shared>
+				$<TARGET_FILE_DIR:${TARGET_NAME}>
+		)
+	endif()
 else()
 	 if(WIN32)
         target_sources(${TARGET_NAME}
@@ -43,6 +50,7 @@ endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE 
 	Module::Application 
+	Module::RHI
 	Core::Core
 	Runtime::Runtime
 )

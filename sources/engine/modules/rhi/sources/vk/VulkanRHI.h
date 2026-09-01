@@ -400,8 +400,10 @@ public:
 
 public:
 	VulkanRHI() = default;
-	virtual ~VulkanRHI() = default;
+	~VulkanRHI() override;
 
+	void initialize(const ui::GenericWindowPointer& Window) override;
+	bool isInitialized() const noexcept override { return IsInitialized; }
 	ESupportedBackendAPI getBackendAPI() const override { return ESupportedBackendAPI::Vulkan; }
 	std::shared_ptr<RDevice> createDevice() override;
 
@@ -410,11 +412,14 @@ public:
 	vk::Device& getVkDevice() { return LogicalDevice.get(); }
 private:
 	void createVkInstance();
+	void createVkSurface(const ui::GenericWindowPointer& Window);
 	void pickPhysicalDevice();
 	void createLogicalDevice();
 	vk::UniqueInstance Instance;
 	vk::PhysicalDevice RealGPU;
 	vk::UniqueDevice LogicalDevice;
+	vk::SurfaceKHR Surface { VK_NULL_HANDLE };
+	bool IsInitialized { false };
 
 
 };
