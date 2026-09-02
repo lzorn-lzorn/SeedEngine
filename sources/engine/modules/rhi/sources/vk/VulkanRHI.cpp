@@ -414,5 +414,4 @@ std::shared_ptr<RDevice> VulkanRHI::createDevice()
 	}
 	return std::make_shared<VulkanDevice>(RealGPU, LogicalDevice);
 }
-
 } // namespace rhi

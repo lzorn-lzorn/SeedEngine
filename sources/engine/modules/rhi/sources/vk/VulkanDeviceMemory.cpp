@@ -1,7 +1,13 @@
 #include "VulkanDeviceMemory.h"
-#include "vulkan/vulkan.hpp"
-#include "vma/vk_mem_alloc.h"
+#include "VulkanDevice.h"
 #include "VulkanRHI.h"
+
+#include <algorithm>
+#include <cassert>
+#include <cstdlib>
+#include <new>
+#include <stdexcept>
+#include <utility>
 
 namespace rhi
 {
@@ -11,19 +17,21 @@ VulkanDeviceMemory::VulkanDeviceMemory(VulkanDeviceMemory&& Other)
 	, VkDeviceMemory(std::move(Other.VkDeviceMemory))
 	, Requirements(std::move(Other.Requirements))
 	, Property(Other.Property)
-	, Allocator(Other.Allocator)
+	, OwnerDevice(Other.OwnerDevice)
 {
-	reset();
+	Other.reset();
 }
 VulkanDeviceMemory& VulkanDeviceMemory::operator=(VulkanDeviceMemory&& Other)
 {
     if (this != &Other)
     {
+		release();
         DeviceMemory::operator=(std::move(Other));
         VkDeviceMemory = std::exchange(Other.VkDeviceMemory, VK_NULL_HANDLE);
         Requirements = std::move(Other.Requirements);
         Property = Other.Property;
-        Allocator = std::exchange(Other.Allocator, nullptr);
+        OwnerDevice = std::exchange(Other.OwnerDevice, vk::Device{ VK_NULL_HANDLE });
+		Other.reset();
     }
     return *this;
 }
@@ -34,15 +42,15 @@ void VulkanDeviceMemory::reset()
 	OwnershipState = DeviceMemory::EState::None;
 	Requirements = {};
 	Property = EMemoryProperty::enum_type::None;
-	Allocator = nullptr;
+	OwnerDevice = vk::Device{ VK_NULL_HANDLE };
 }
 
 void VulkanDeviceMemory::release() {
 	if (OwnershipState == DeviceMemory::EState::OwnsMemory && VkDeviceMemory != VK_NULL_HANDLE)
     {
-        if (Allocator)
+        if (OwnerDevice)
         {
-            Allocator->getVkDevice().freeMemory(VkDeviceMemory);
+            OwnerDevice.freeMemory(VkDeviceMemory);
         }
     }
 	reset();
@@ -50,9 +58,21 @@ void VulkanDeviceMemory::release() {
 
 void* VulkanDeviceMemory::map(DeviceSizeType Offset, DeviceSizeType Size)
 {
-	assert(Allocator != nullptr && "Allocator must be set before mapping memory.");
+    if (!OwnerDevice || VkDeviceMemory == VK_NULL_HANDLE)
+    {
+        throw std::logic_error("Cannot map invalid Vulkan device memory.");
+    }
+    if (Offset >= Requirements.Size || (Size != 0 && Size > Requirements.Size - Offset))
+    {
+        throw std::out_of_range("Vulkan device memory map range is out of bounds.");
+    }
 	void* data = nullptr;
-	vk::Result result = Allocator->getVkDevice().mapMemory(VkDeviceMemory, Offset, Size, vk::MemoryMapFlags(), &data);
+    vk::Result result = OwnerDevice.mapMemory(
+        VkDeviceMemory,
+        Offset,
+        Size == 0 ? VK_WHOLE_SIZE : Size,
+        vk::MemoryMapFlags(),
+        &data);
 	if (result != vk::Result::eSuccess) {
 		// TODO: 处理映射失败的情况
 		throw std::runtime_error("Failed to map Vulkan device memory.");
@@ -61,12 +81,12 @@ void* VulkanDeviceMemory::map(DeviceSizeType Offset, DeviceSizeType Size)
 }
 void VulkanDeviceMemory::unmap()
 {
-	assert(Allocator != nullptr);
-	Allocator->getVkDevice().unmapMemory(VkDeviceMemory);
+	assert(OwnerDevice);
+	OwnerDevice.unmapMemory(VkDeviceMemory);
 }
 void VulkanDeviceMemory::flush(DeviceSizeType Offset, DeviceSizeType Size)
 {
-	vk::Device device = Allocator->getVkDevice();
+	vk::Device device = OwnerDevice;
 
     vk::MappedMemoryRange range;
     range.setMemory(VkDeviceMemory);
@@ -78,7 +98,7 @@ void VulkanDeviceMemory::flush(DeviceSizeType Offset, DeviceSizeType Size)
 }
 void VulkanDeviceMemory::invalidate(DeviceSizeType Offset, DeviceSizeType Size)
 {
-	vk::Device device = Allocator->getVkDevice();
+	vk::Device device = OwnerDevice;
 
     vk::MappedMemoryRange range;
     range.setMemory(VkDeviceMemory);
@@ -101,10 +121,10 @@ EMemoryProperty VulkanDeviceMemory::getMemoryProperty() const
 
 VulkanDeviceMemoryPool::VulkanDeviceMemoryPool()
 {
-	VulkanDeviceMemory* new_memory =  (VulkanDeviceMemory*) std::malloc(sizeof(VulkanDeviceMemory) * InitialSize);
+    pointer new_memory = static_cast<pointer>(std::malloc(sizeof(VulkanDeviceMemory) * InitialSize));
 	if (!new_memory)
 	{
-		// TODO: bad_alloc
+        throw std::bad_alloc();
 	}
 	Blocks.emplace_back(new_memory, InitialSize);
 
@@ -117,7 +137,8 @@ VulkanDeviceMemoryPool::VulkanDeviceMemoryPool()
 
 VulkanDeviceMemoryPool::~VulkanDeviceMemoryPool()
 {
-	UsedList.clear();
+    assert(UsedList.empty() && "Vulkan device memory objects are still in use during pool destruction.");
+    UsedList.clear();
     FreeList.clear();
 
     // 对每个内存块中的每个对象调用析构函数
@@ -135,7 +156,16 @@ VulkanDeviceMemoryPool::~VulkanDeviceMemoryPool()
 
 void VulkanDeviceMemoryPool::reclaim(VulkanDeviceMemory* Memory) 
 {
-    UsedList.remove(Memory);
+    if (!Memory)
+    {
+        return;
+    }
+    auto used = std::find(UsedList.begin(), UsedList.end(), Memory);
+    if (used == UsedList.end())
+    {
+        return;
+    }
+    UsedList.erase(used);
     FreeList.push_back(Memory);
 }
 
@@ -143,7 +173,7 @@ void VulkanDeviceMemoryPool::expand()
 {
 	// 使用两倍扩容策略:
 	// TODO: 使用自定义的内存分配器接口, 而不是直接使用 malloc
-	size_t new_size = UsedList.size() * 2; 
+    const size_t new_size = Capacity;
 
     pointer raw = static_cast<pointer>(
         std::malloc(sizeof(VulkanDeviceMemory) * new_size)
@@ -159,7 +189,7 @@ void VulkanDeviceMemoryPool::expand()
         FreeList.push_back(obj);
     }
 
-	Capacity = new_size;
+    Capacity += new_size;
 }
 VulkanDeviceMemory& VulkanDeviceMemoryPool::allocateMemory()
 {
@@ -175,21 +205,13 @@ VulkanDeviceMemory& VulkanDeviceMemoryPool::allocateMemory()
     return *mem;
 }
 
-VulkanDeviceMemoryDeleter::VulkanDeviceMemoryDeleter(VulkanDeviceMemoryAllocator* InAllocator, VulkanDeviceMemoryPool* InPool)
-    : Allocator(InAllocator), Pool(InPool)
-{}
-
 void VulkanDeviceMemoryDeleter::operator()(VulkanDeviceMemory* ptr) const
 {
-    if (ptr->OwnershipState == DeviceMemory::EState::OwnsMemory && ptr->VkDeviceMemory != VK_NULL_HANDLE)
-    {
-        if (Allocator)
-        {
-            Allocator->getVkDevice().freeMemory(ptr->VkDeviceMemory);
-        }
-    }
-
-    ptr->reset();
+	if (!ptr)
+	{
+		return;
+	}
+	ptr->release();
 
     if (Pool)
     {
@@ -201,46 +223,19 @@ void VulkanDeviceMemoryDeleter::operator()(VulkanDeviceMemory* ptr) const
 
 std::shared_ptr<DeviceMemory> VulkanDeviceMemoryAllocator::allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property)
 {
-	vk::MemoryAllocateInfo alloc_info;
-	alloc_info.setAllocationSize(Requirements.Size)
-			.setMemoryTypeIndex(findMemoryType(Requirements.MemoryTypeBits, toVk(Property)));
-
-	vk::DeviceMemory device_memory = VulkanDevice.allocateMemory(alloc_info);
-
-	VulkanDeviceMemory& memory_ref = VulkanDeviceMemoryPool::self().allocateMemory();
-    VulkanDeviceMemory* memory_ptr = &memory_ref;
-
-	memory_ptr->Allocator = this;
-    memory_ptr->VkDeviceMemory = device_memory;
-    memory_ptr->Requirements = Requirements;
-    memory_ptr->Property = Property;
-    memory_ptr->OwnershipState = DeviceMemory::EState::OwnsMemory;
-
-	VulkanDeviceMemoryDeleter deleter(this, &VulkanDeviceMemoryPool::self());
-	return std::shared_ptr<DeviceMemory>(memory_ptr, deleter);
+    if (!Device)
+	{
+        throw std::invalid_argument("Vulkan memory allocation requires a valid device.");
+    }
+    return Device->allocateMemory(Requirements, Property);
 }
 
 void VulkanDeviceMemoryAllocator::freeMemory(std::shared_ptr<DeviceMemory> Memory)
 {
-	// 通过 reset 触发删除器，自动释放 Vulkan 内存并回收对象
-    if (Memory)
-    {
-        Memory.reset();
-    }
-}
-
-uint32_t VulkanDeviceMemoryAllocator::findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags Properties)
-{
-    vk::PhysicalDeviceMemoryProperties memory_properties = VulkanPhysicalDevice.getMemoryProperties();
-
-    for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) 
+    if (!Device)
 	{
-        if ((TypeBits & (1 << i)) && 
-            (memory_properties.memoryTypes[i].propertyFlags & Properties) == Properties) 
-		{
-            return i;
-        }
-    }
-    throw std::runtime_error("Failed to find suitable memory type!");
+        throw std::logic_error("Vulkan memory allocator has no device.");
+	}
+    Device->freeMemory(std::move(Memory));
 }
 }

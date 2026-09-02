@@ -1,14 +1,17 @@
 #pragma once
 #include <RHI.h>
 #include <list>
+#include <vector>
 #include <vulkan/vulkan.hpp>
-#include "vulkan/vulkan.hpp"
 
 namespace rhi
 {
 
+class VulkanDevice;
+
 class VulkanDeviceMemory final : public DeviceMemory
 {
+	friend class VulkanDevice;
 	friend class VulkanDeviceMemoryDeleter;
 	friend class VulkanDeviceMemoryPool;
 	friend class VulkanDeviceMemoryAllocator;
@@ -17,7 +20,7 @@ public:
 		: VkDeviceMemory(VK_NULL_HANDLE)
 		, Requirements({})
 		, Property(EMemoryProperty::enum_type::None)
-		, Allocator(nullptr)
+		, OwnerDevice(nullptr)
 	{}
 	~VulkanDeviceMemory() override = default;
 	VulkanDeviceMemory(const VulkanDeviceMemory&) = delete;
@@ -33,21 +36,21 @@ public:
 	void flush(DeviceSizeType Offset, DeviceSizeType Size) override;
 	void invalidate(DeviceSizeType Offset, DeviceSizeType Size) override;
 	void release() override;
-
+	
+	
 	VulkanDeviceMemory& setVkDeviceMemory(vk::DeviceMemory InVkDeviceMemory) { VkDeviceMemory = InVkDeviceMemory; return *this; }
 
 	vk::DeviceMemory getVkDeviceMemory() const { return VkDeviceMemory; } 
 	vk::DeviceMemory getVkDeviceMemory() { return VkDeviceMemory; } 
 	MemoryRequirements getMemoryRequirements() const override;
 	EMemoryProperty getMemoryProperty() const override;
-
+	
 private:
 	void reset();
-
-	vk::DeviceMemory VkDeviceMemory { VK_NULL_HANDLE };	
 	MemoryRequirements Requirements;
+	vk::DeviceMemory VkDeviceMemory { VK_NULL_HANDLE };	
+	vk::Device OwnerDevice { VK_NULL_HANDLE };
 	EMemoryProperty Property;
-	class VulkanDeviceMemoryAllocator* Allocator { nullptr };
 	
 };
 
@@ -89,18 +92,19 @@ class VulkanDeviceMemoryDeleter
 {
 public:
     VulkanDeviceMemoryDeleter() = default;
-    VulkanDeviceMemoryDeleter(class VulkanDeviceMemoryAllocator*, VulkanDeviceMemoryPool*);
+	explicit VulkanDeviceMemoryDeleter(VulkanDeviceMemoryPool* InPool) : Pool(InPool) {}
 
     void operator()(VulkanDeviceMemory* ptr) const;
 
 private:
-    class VulkanDeviceMemoryAllocator* Allocator = nullptr;
     VulkanDeviceMemoryPool* Pool = nullptr;
 };
 
 class VulkanDeviceMemoryAllocator final : public DeviceMemoryAllocator
 {
 public:
+	explicit VulkanDeviceMemoryAllocator(VulkanDevice* InDevice = nullptr) noexcept
+		: Device(InDevice) {}
 	~VulkanDeviceMemoryAllocator() override = default;
 
 	// note: 从池中分配一个 VulkanDeviceMemory, 
@@ -108,15 +112,10 @@ public:
 	std::shared_ptr<DeviceMemory> allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property) override;
 	void freeMemory(std::shared_ptr<DeviceMemory> Memory) override;
 
-	VulkanDeviceMemory bindBuffer(vk::Buffer);
-	VulkanDeviceMemory bindImage(vk::Image);
-
-	vk::Device getVkDevice() const { return VulkanDevice; }
+	void setDevice(VulkanDevice* InDevice) noexcept { Device = InDevice; }
+	[[nodiscard]] VulkanDevice* getDevice() const noexcept { return Device; }
 private:
-	uint32_t findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags Properties);
-
-	vk::Device VulkanDevice;
-	vk::PhysicalDevice VulkanPhysicalDevice;
+	VulkanDevice* Device = nullptr;
 };
-
-}
+	
+} // namespace rhi

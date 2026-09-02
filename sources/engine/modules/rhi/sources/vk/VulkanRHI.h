@@ -8,6 +8,8 @@
 namespace rhi
 {
 
+class VulkanDevice;
+
 template <typename VkType, typename RHIType>
 VkType toVk(RHIType value);
 
@@ -407,7 +409,6 @@ public:
 	ESupportedBackendAPI getBackendAPI() const override { return ESupportedBackendAPI::Vulkan; }
 	std::shared_ptr<RDevice> createDevice() override;
 
-
 public:
 	vk::Device& getVkDevice() { return LogicalDevice.get(); }
 private:
@@ -415,12 +416,12 @@ private:
 	void createVkSurface(const ui::GenericWindowPointer& Window);
 	void pickPhysicalDevice();
 	void createLogicalDevice();
+
 	vk::UniqueInstance Instance;
 	vk::PhysicalDevice RealGPU;
 	vk::UniqueDevice LogicalDevice;
 	vk::SurfaceKHR Surface { VK_NULL_HANDLE };
 	bool IsInitialized { false };
-
 
 };
 

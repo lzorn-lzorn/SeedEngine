@@ -56,6 +56,9 @@ public:
 	
 	~VulkanDevice() = default;
 	
+    uint32_t findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags Properties);
+    vk::PhysicalDevice& getVkPhysicalDevice() { return RealGPU; }
+    vk::Device& getVkDevice() { return LogicalDevice.get(); }
 public:
 	RBuffer* createBuffer() override;
 	RImage* createImage() override;
@@ -66,6 +69,10 @@ public:
 	RCommandList* createCommandList() override;
 	RSwapchain* createSwapchain() override;
 	RTexture* createTexture() override;
+    std::shared_ptr<DeviceMemory> allocateMemory(
+        MemoryRequirements Requirements,
+        EMemoryProperty Property) override;
+    void freeMemory(std::shared_ptr<DeviceMemory> Memory) override;
 
 	void waitIdle() override;
 	void* getNativeHandle() const override;

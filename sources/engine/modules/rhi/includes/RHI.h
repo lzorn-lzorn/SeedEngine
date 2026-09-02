@@ -461,36 +461,36 @@ class RImage
 public:
 	struct Descriptor_t
 	{
-		EFormat Format;
-		EImageDimension Dimension;
-		uint32_t Width;
-		uint32_t Height;
-		uint32_t Depth;
-		uint32_t MipLevels;
-		uint32_t ArrayLayers;
-		ESharingMode SharingMode;
-		EMemoryProperty MemoryProperty;
-		EImageUsage Usage;
-		ESampleCount SampleCount;
+		EFormat Format { EFormat::Undefined };
+		EImageDimension Dimension { EImageDimension::Texture2D };
+		uint32_t Width { 1 };
+		uint32_t Height { 1 };
+		uint32_t Depth { 1 };
+		uint32_t MipLevels { 1 };
+		uint32_t ArrayLayers { 1 };
+		ESharingMode SharingMode { ESharingMode::Exclusive };
+		EMemoryProperty MemoryProperty { EMemoryProperty_t::DeviceLocal };
+		EImageUsage Usage {};
+		ESampleCount SampleCount { ESampleCount::Count1 };
 	};
 
 public:
-	static std::shared_ptr<RImage> create(const Descriptor_t& Desc,  DeviceMemoryAllocator* Allocator = nullptr);
-
-	static std::shared_ptr<RImage> createUnbound(const Descriptor_t& Desc);
-	
-
 	virtual ~RImage() = default;
-	const Descriptor_t& getDescriptor() const { return Descriptor; }
+	RImage(const RImage&) = delete;
+	RImage& operator=(const RImage&) = delete;
+	RImage(RImage&&) = delete;
+	RImage& operator=(RImage&&) = delete;
+
+	[[nodiscard]] const Descriptor_t& getDescriptor() const noexcept { return Descriptor; }
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual bool isMemoryBound() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
-	RImage(const Descriptor_t& Desc) : Descriptor(Desc) {}
-	
-	virtual void initializeImage() = 0;
-	virtual void allocateMemory(DeviceMemoryAllocator* Allocator) = 0;
-	virtual void bindMemory() = 0;
+	explicit RImage(const Descriptor_t& Desc) : Descriptor(Desc) {}
 
-	Descriptor_t Descriptor;
+private:
+	const Descriptor_t Descriptor;
 };
 
 class RImageView
@@ -620,6 +620,10 @@ public:
 	virtual RCommandList* createCommandList() = 0;
 	virtual RSwapchain* createSwapchain() = 0;
 	virtual RTexture* createTexture() = 0;
+	virtual std::shared_ptr<DeviceMemory> allocateMemory(
+		MemoryRequirements Requirements,
+		EMemoryProperty Property) = 0;
+	virtual void freeMemory(std::shared_ptr<DeviceMemory> Memory) = 0;
 
 	virtual void waitIdle() = 0;
 	virtual void* getNativeHandle() const = 0;
