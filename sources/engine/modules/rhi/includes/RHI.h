@@ -79,7 +79,9 @@ enum class EFormat : uint32_t
 
 inline bool isDepthFormat(EFormat Format)
 {
-	return Format == EFormat::D24_UNorm_S8_UInt || Format == EFormat::D32_Float;
+	return Format == EFormat::D16_UNorm ||
+		Format == EFormat::D24_UNorm_S8_UInt ||
+		Format == EFormat::D32_Float;
 }
 
 inline bool isDepthOnlyFormat(EFormat Format)
@@ -95,12 +97,22 @@ inline bool isDepthOnlyFormat(EFormat Format)
 
 inline bool isStencilOnlyFormat(EFormat Format)
 {
-	return Format == EFormat::D24_UNorm_S8_UInt;
+	return false;
 }
 
 inline bool isDepthStencilFormat(EFormat Format)
 {
-	return Format == EFormat::D24_UNorm_S8_UInt || Format == EFormat::D32_Float;
+	return Format == EFormat::D24_UNorm_S8_UInt;
+}
+
+inline bool hasDepthAspect(EFormat Format)
+{
+	return isDepthFormat(Format);
+}
+
+inline bool hasStencilAspect(EFormat Format)
+{
+	return Format == EFormat::D24_UNorm_S8_UInt;
 }
 
 inline uint32_t calPixelSizeFormEFormat(EFormat Format)
@@ -115,6 +127,8 @@ inline uint32_t calPixelSizeFormEFormat(EFormat Format)
 		return 8;
 	case EFormat::RGBA32_Float:
 		return 16;
+	case EFormat::D16_UNorm:
+		return 2;
 	case EFormat::D24_UNorm_S8_UInt:
 		return 4;
 	case EFormat::D32_Float:
@@ -181,6 +195,18 @@ enum class EImageDimension : uint8_t
     Texture3D,          // 3D 纹理(整个 Depth 当作第三维, 不能单独切片)
     Cube,               // 立方体贴图(6 个面, 不可独立扩展)
     CubeArray           // 立方体贴图数组(6 的整数倍面)
+};
+
+enum class EImageViewDimension : uint8_t
+{
+	Auto,
+	Texture1D,
+    Texture1DArray,
+    Texture2D,
+    Texture2DArray,
+    Texture3D,
+    Cube,
+    CubeArray
 };
 
 enum class ESharingMode
@@ -455,6 +481,57 @@ public:
 	virtual void freeMemory(std::shared_ptr<DeviceMemory> Memory) = 0;
 };
 
+class RImageView
+{
+public:
+    struct Descriptor_t
+    {
+        std::shared_ptr<RImage> Image;
+
+        // Undefined 表示继承 Image 的格式。
+        EFormat Format { EFormat::Undefined };
+
+        // Auto 表示根据 Image dimension 和 layer 范围推导。
+        EImageViewDimension Dimension { EImageViewDimension::Auto };
+
+        // Auto 表示根据最终格式推导 Color/Depth/DepthStencil。
+        EImageAspect Aspect { EImageAspect::Auto };
+
+        uint32_t BaseMipLevel { 0 };
+        uint32_t MipLevelCount { 1 };
+        uint32_t BaseArrayLayer { 0 };
+        uint32_t ArrayLayerCount { 1 };
+    };
+
+    virtual ~RImageView() = default;
+
+    RImageView(const RImageView&) = delete;
+    RImageView& operator=(const RImageView&) = delete;
+    RImageView(RImageView&&) = delete;
+    RImageView& operator=(RImageView&&) = delete;
+
+    [[nodiscard]] const Descriptor_t& getDescriptor() const noexcept
+    {
+        return Descriptor;
+    }
+
+    [[nodiscard]] const std::shared_ptr<RImage>& getImage() const noexcept
+    {
+        return Descriptor.Image;
+    }
+
+    [[nodiscard]] virtual bool isValid() const noexcept = 0;
+    [[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+    explicit RImageView(Descriptor_t Desc)
+        : Descriptor(std::move(Desc))
+    {
+    }
+
+private:
+    const Descriptor_t Descriptor;
+};
 
 class RImage
 {
@@ -491,24 +568,6 @@ protected:
 
 private:
 	const Descriptor_t Descriptor;
-};
-
-class RImageView
-{
-public:
-	struct Descriptor_t
-	{
-		std::shared_ptr<RImage> Image;
-		EFormat Format;
-		EImageAspect Aspect;
-		uint32_t BaseMipLevel;
-		uint32_t MipLevelCount;
-		uint32_t BaseArrayLayer;
-		uint32_t ArrayLayerCount;
-	};
-
-	static std::shared_ptr<RImageView> create(const Descriptor_t& Desc);
-	virtual ~RImageView() = default;
 };
 
 class RSwapchain
@@ -613,6 +672,7 @@ public:
 
 	virtual RBuffer* createBuffer() = 0;
 	virtual RImage* createImage() = 0;
+    virtual std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) = 0;
 	virtual RSampler* createSampler() = 0;
 	virtual RShader* createShader() = 0;
 	virtual RPipeline* createPipeline() = 0;

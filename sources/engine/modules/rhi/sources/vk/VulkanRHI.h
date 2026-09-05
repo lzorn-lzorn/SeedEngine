@@ -1,9 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <stdexcept>
 #include <RHI.h>
 #include <vulkan/vulkan.hpp>
-#include "VulkanDeviceMemory.h"
 
 namespace rhi
 {
@@ -22,6 +22,7 @@ inline auto toVk(EFormat Fomat) -> vk::Format
 	case EFormat::BGRA8_UNorm: return vk::Format::eB8G8R8A8Unorm;
 	case EFormat::RGBA16_Float: return vk::Format::eR16G16B16A16Sfloat;
 	case EFormat::RGBA32_Float: return vk::Format::eR32G32B32A32Sfloat;
+	case EFormat::D16_UNorm: return vk::Format::eD16Unorm;
 	case EFormat::D24_UNorm_S8_UInt: return vk::Format::eD24UnormS8Uint;
 	case EFormat::D32_Float: return vk::Format::eD32Sfloat;
 	case EFormat::Undefined:
@@ -306,6 +307,38 @@ inline auto toVk(EImageDimension Dimension) -> vk::ImageType
 	}
 }
 
+inline auto toVk(EImageViewDimension Dimension) -> vk::ImageViewType
+{
+	switch (Dimension)
+	{
+	case EImageViewDimension::Texture1D: return vk::ImageViewType::e1D;
+	case EImageViewDimension::Texture1DArray: return vk::ImageViewType::e1DArray;
+	case EImageViewDimension::Texture2D: return vk::ImageViewType::e2D;
+	case EImageViewDimension::Texture2DArray: return vk::ImageViewType::e2DArray;
+	case EImageViewDimension::Texture3D: return vk::ImageViewType::e3D;
+	case EImageViewDimension::Cube: return vk::ImageViewType::eCube;
+	case EImageViewDimension::CubeArray: return vk::ImageViewType::eCubeArray;
+	case EImageViewDimension::Auto:
+	default:
+		throw std::invalid_argument("Vulkan image view dimension must be resolved before conversion.");
+	}
+}
+
+inline auto toVk(EImageAspect Aspect) -> vk::ImageAspectFlags
+{
+	switch (Aspect)
+	{
+	case EImageAspect::Color: return vk::ImageAspectFlagBits::eColor;
+	case EImageAspect::Depth: return vk::ImageAspectFlagBits::eDepth;
+	case EImageAspect::Stencil: return vk::ImageAspectFlagBits::eStencil;
+	case EImageAspect::DepthStencil:
+		return vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil;
+	case EImageAspect::Auto:
+	default:
+		throw std::invalid_argument("Vulkan image aspect must be resolved before conversion.");
+	}
+}
+
 inline auto toVk(EPresentMode PresentMode) -> vk::PresentModeKHR
 {
 	switch (PresentMode)
@@ -392,7 +425,6 @@ inline auto toVk(ESurfaceTransform Transform) -> vk::SurfaceTransformFlagBitsKHR
 }
 
 
-vk::ImageAspectFlags toVkImageAspectMask(EImageAspect Aspect, EFormat TextureFormat);
 uint64_t clampCopySize(uint64_t Offset, uint64_t RequestedSize, uint64_t MaxSize);
 
 

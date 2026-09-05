@@ -41,6 +41,7 @@ public:
 	{
 		return std::holds_alternative<vk::Image>(Image);
 	}
+	[[nodiscard]] VulkanDevice& getDevice() const noexcept { return *Device; }
 	[[nodiscard]] const std::shared_ptr<DeviceMemory>& getMemory() const noexcept { return Memory; }
 
 private:

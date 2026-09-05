@@ -1,8 +1,8 @@
-
+#include "RHI.h"
 #include "VulkanRHI.h"
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
-
+#include "VulkanImageView.h"
 #include <stdexcept>
 
 namespace rhi
@@ -24,6 +24,12 @@ RBuffer* VulkanDevice::createBuffer()
 RImage* VulkanDevice::createImage()
 {
 	throwResourceNotImplemented("image");
+}
+
+std::shared_ptr<RImageView> VulkanDevice::createImageView(
+	const RImageView::Descriptor_t& Desc)
+{
+	return VulkanImageView::create(*this, Desc);
 }
 
 RSampler* VulkanDevice::createSampler()
@@ -121,3 +127,6 @@ uint32_t VulkanDevice::findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags
     }
 
 }
+
+
+ 

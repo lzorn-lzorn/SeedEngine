@@ -62,6 +62,7 @@ public:
 public:
 	RBuffer* createBuffer() override;
 	RImage* createImage() override;
+    std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) override;
 	RSampler* createSampler() override;
 	RShader* createShader() override;
 	RPipeline* createPipeline() override;
