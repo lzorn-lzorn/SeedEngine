@@ -4,6 +4,7 @@
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanImageView.h"
+#include "VulkanPipeline.hpp"
 #include <stdexcept>
 
 namespace rhi
@@ -28,6 +29,10 @@ VulkanDevice::VulkanDevice(
 	Limits.MaxViewports = properties.limits.maxViewports;
 	Limits.MaxFramebufferWidth = properties.limits.maxFramebufferWidth;
 	Limits.MaxFramebufferHeight = properties.limits.maxFramebufferHeight;
+	Limits.MaxVertexInputBindings = properties.limits.maxVertexInputBindings;
+	Limits.MaxVertexInputAttributes = properties.limits.maxVertexInputAttributes;
+	Limits.MaxPushConstantSize = properties.limits.maxPushConstantsSize;
+	Limits.MaxBoundBindGroups = properties.limits.maxBoundDescriptorSets;
 
 	vk::PhysicalDeviceVulkan13Features vulkan13_features;
 	vk::PhysicalDeviceMultiviewFeatures multiview_features;
@@ -41,6 +46,15 @@ VulkanDevice::VulkanDevice(
 	Features.Synchronization2 = vulkan13_features.synchronization2 == VK_TRUE;
 	Features.Multiview = multiview_features.multiview == VK_TRUE;
 	Features.SeparateDepthStencilLayouts = separate_layout_features.separateDepthStencilLayouts == VK_TRUE;
+	Features.GeometryShader = features.features.geometryShader == VK_TRUE;
+	Features.TessellationShader = features.features.tessellationShader == VK_TRUE;
+	Features.FillModeNonSolid = features.features.fillModeNonSolid == VK_TRUE;
+	Features.WideLines = features.features.wideLines == VK_TRUE;
+	Features.DepthClamp = features.features.depthClamp == VK_TRUE;
+	Features.DepthBounds = features.features.depthBounds == VK_TRUE;
+	Features.SampleRateShading = features.features.sampleRateShading == VK_TRUE;
+	Features.AlphaToOne = features.features.alphaToOne == VK_TRUE;
+	Features.IndependentBlend = features.features.independentBlend == VK_TRUE;
 }
 
 namespace
@@ -72,14 +86,39 @@ RSampler* VulkanDevice::createSampler()
 	throwResourceNotImplemented("sampler");
 }
 
-RShader* VulkanDevice::createShader()
+std::shared_ptr<RShader> VulkanDevice::createShader(const ShaderDescriptor& Desc)
 {
-	throwResourceNotImplemented("shader");
+	return std::make_shared<VulkanShader>(*this, Desc);
 }
 
-RPipeline* VulkanDevice::createPipeline()
+std::shared_ptr<RBindGroupLayout> VulkanDevice::createBindGroupLayout(
+	const BindGroupLayoutDescriptor& Desc)
 {
-	throwResourceNotImplemented("pipeline");
+	return std::make_shared<VulkanBindGroupLayout>(*this, Desc);
+}
+
+std::shared_ptr<RPipelineLayout> VulkanDevice::createPipelineLayout(
+	const PipelineLayoutDescriptor& Desc)
+{
+	return std::make_shared<VulkanPipelineLayout>(*this, Desc);
+}
+
+std::shared_ptr<RPipelineCache> VulkanDevice::createPipelineCache(
+	const PipelineCacheDescriptor& Desc)
+{
+	return std::make_shared<VulkanPipelineCache>(*this, Desc);
+}
+
+std::shared_ptr<RPipeline> VulkanDevice::createGraphicsPipeline(
+	const GraphicsPipelineDescriptor& Desc)
+{
+	return createVulkanGraphicsPipeline(*this, Desc);
+}
+
+std::shared_ptr<RPipeline> VulkanDevice::createComputePipeline(
+	const ComputePipelineDescriptor& Desc)
+{
+	return createVulkanComputePipeline(*this, Desc);
 }
 
 std::shared_ptr<RCommandList> VulkanDevice::createCommandList(

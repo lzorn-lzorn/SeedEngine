@@ -1,9 +1,12 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <cstdint>
 #include <span>
+#include <string>
+#include <vector>
 #include <core/wrappers/Flag.hpp>
 #include <core/math/MathCommon.hpp>
 #include <generic_application/window/GenericWindow.hpp>
@@ -257,8 +260,26 @@ enum class EPipelineType
 {
 	None,
 	Graphics,
-	Compute
+	Compute,
+	RayTracing
 };
+
+/**
+ * @brief Pipeline 创建策略。
+ *
+ * 这些标志只表达跨后端的编译意图。Vulkan Graphics Pipeline Library、
+ * D3D12 Pipeline Library 和 Metal Binary Archive 等后端优化不会直接暴露到 RHI。
+ */
+enum class EPipelineCompileFlag_t : uint32_t
+{
+	None = 0,
+	AllowAsync = 1 << 0,
+	FailIfCompileNeeded = 1 << 1,
+	Optimize = 1 << 2,
+	CaptureStatistics = 1 << 3
+};
+
+using EPipelineCompileFlags = core::wrappers::Flags<EPipelineCompileFlag_t>;
 
 enum class ELoadOp
 {
@@ -316,16 +337,22 @@ enum class EPrimitiveTopology
 	LineList,
 	LineStrip,
 	TriangleList,
-	TriangleStrip
+	TriangleStrip,
+	PatchList
 };
 
 enum class EDescriptorType
 {
 	UniformBuffer,
+	DynamicUniformBuffer,
 	StorageBuffer,
+	ReadOnlyStorageBuffer,
+	DynamicStorageBuffer,
 	Sampler,
 	SampledTexture,
-	StorageTexture
+	StorageTexture,
+	CombinedImageSampler,
+	AccelerationStructure
 };
 
 enum class EBlendFactor
@@ -387,6 +414,60 @@ enum class EFillMode
 	Wireframe
 };
 
+enum class EFrontFace : uint32_t
+{
+	CounterClockwise,
+	Clockwise
+};
+
+enum class EVertexInputRate : uint32_t
+{
+	PerVertex,
+	PerInstance
+};
+
+/**
+ * @brief 可由命令列表在 Pipeline 创建后覆盖的状态。
+ *
+ * 动态状态不会参与 Pipeline 语义缓存键。请求后端不支持的动态状态时，
+ * Pipeline 创建必须失败，而不能静默退化为静态状态。
+ */
+enum class EDynamicState_t : uint64_t
+{
+	None = 0,
+	Viewport = 1ull << 0,
+	Scissor = 1ull << 1,
+	BlendConstants = 1ull << 2,
+	StencilReference = 1ull << 3,
+	DepthBias = 1ull << 4,
+	LineWidth = 1ull << 5,
+	CullMode = 1ull << 6,
+	FrontFace = 1ull << 7,
+	PrimitiveTopology = 1ull << 8,
+	DepthTestEnable = 1ull << 9,
+	DepthWriteEnable = 1ull << 10,
+	DepthCompareOp = 1ull << 11,
+	StencilTestEnable = 1ull << 12,
+	StencilOperations = 1ull << 13,
+	StencilCompareMask = 1ull << 14,
+	StencilWriteMask = 1ull << 15,
+	VertexInput = 1ull << 16
+};
+
+using EDynamicStates = core::wrappers::Flags<EDynamicState_t>;
+
+enum class EColorWriteMask_t : uint8_t
+{
+	None = 0,
+	R = 1 << 0,
+	G = 1 << 1,
+	B = 1 << 2,
+	A = 1 << 3,
+	All = 0x0F
+};
+
+using EColorWriteMask = core::wrappers::Flags<EColorWriteMask_t>;
+
 enum class ESampleCount
 {
 	Count1 = 1,
@@ -437,6 +518,10 @@ class RImage;
 class RSampler;
 class RShader;
 class RPipeline;
+class RPipelineCache;
+class RPipelineLayout;
+class RBindGroupLayout;
+class RDevice;
 class RCommandList;
 class DeviceMemoryAllocator;
 class RTexture;
@@ -504,6 +589,10 @@ struct DeviceLimits
 	uint32_t MaxViewports { 1 };
 	uint32_t MaxFramebufferWidth { 1 };
 	uint32_t MaxFramebufferHeight { 1 };
+	uint32_t MaxVertexInputBindings { 1 };
+	uint32_t MaxVertexInputAttributes { 1 };
+	uint32_t MaxPushConstantSize { 0 };
+	uint32_t MaxBoundBindGroups { 0 };
 };
 
 struct DeviceFeatures
@@ -512,6 +601,22 @@ struct DeviceFeatures
 	bool Synchronization2 { false };
 	bool Multiview { false };
 	bool SeparateDepthStencilLayouts { false };
+	bool GeometryShader { false };
+	bool TessellationShader { false };
+	bool FillModeNonSolid { false };
+	bool WideLines { false };
+	bool DepthClamp { false };
+	bool DepthBounds { false };
+	bool SampleRateShading { false };
+	bool AlphaToOne { false };
+	bool IndependentBlend { false };
+	bool ExtendedDynamicState { false };
+	bool ExtendedDynamicState2 { false };
+	bool ExtendedDynamicState3 { false };
+	bool DynamicVertexInput { false };
+	bool MeshShader { false };
+	bool RayTracingPipeline { false };
+	bool PipelineExecutableProperties { false };
 };
 
 
@@ -725,13 +830,313 @@ struct RenderingSignature
 	constexpr bool operator==(const RenderingSignature&) const = default;
 };
 
+/**
+ * @brief 判断 Dynamic Rendering 附件签名是否兼容。
+ *
+ * Load/Store/Clear、实际 ImageView、RenderArea 和 Resolve 目标不影响 Pipeline
+ * 兼容性。所有未使用颜色槽必须被规范化为 EFormat::Undefined。
+ */
+[[nodiscard]] constexpr bool isRenderingCompatible(
+	const RenderingSignature& PipelineSignature,
+	const RenderingSignature& RenderingSignature) noexcept
+{
+	return PipelineSignature == RenderingSignature;
+}
+
+/** @brief 已编译 Shader 字节码及其稳定身份。 */
+struct ShaderDescriptor
+{
+	EShaderStage_t Stage { EShaderStage_t::Vertex };
+	std::vector<std::byte> ByteCode;
+	std::string EntryPoint { "main" };
+	std::string DebugName;
+	uint64_t ContentHash { 0 };
+};
+
+class RShader
+{
+public:
+	virtual ~RShader() = default;
+	RShader(const RShader&) = delete;
+	RShader& operator=(const RShader&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual EShaderStage_t getStage() const noexcept = 0;
+	[[nodiscard]] virtual uint64_t getContentHash() const noexcept = 0;
+	[[nodiscard]] virtual const std::string& getEntryPoint() const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RShader() = default;
+};
+
+/** @brief Descriptor/Bind Group Layout 中的一项资源声明。 */
+struct BindGroupLayoutEntry
+{
+	uint32_t Binding { 0 };
+	EDescriptorType Type { EDescriptorType::UniformBuffer };
+	uint32_t ArrayCount { 1 };
+	EShaderStage Visibility {};
+
+	constexpr bool operator==(const BindGroupLayoutEntry&) const = default;
+};
+
+struct BindGroupLayoutDescriptor
+{
+	std::vector<BindGroupLayoutEntry> Entries;
+	std::string DebugName;
+};
+
+class RBindGroupLayout
+{
+public:
+	virtual ~RBindGroupLayout() = default;
+	RBindGroupLayout(const RBindGroupLayout&) = delete;
+	RBindGroupLayout& operator=(const RBindGroupLayout&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RBindGroupLayout() = default;
+};
+
+struct PushConstantRange
+{
+	EShaderStage Stages {};
+	uint32_t Offset { 0 };
+	uint32_t Size { 0 };
+
+	constexpr bool operator==(const PushConstantRange&) const = default;
+};
+
+struct PipelineLayoutDescriptor
+{
+	std::vector<std::shared_ptr<RBindGroupLayout>> BindGroupLayouts;
+	std::vector<PushConstantRange> PushConstantRanges;
+	std::string DebugName;
+};
+
+class RPipelineLayout
+{
+public:
+	virtual ~RPipelineLayout() = default;
+	RPipelineLayout(const RPipelineLayout&) = delete;
+	RPipelineLayout& operator=(const RPipelineLayout&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
+	[[nodiscard]] virtual bool supportsPushConstants(
+		EShaderStage Stages,
+		uint32_t Offset,
+		uint32_t Size) const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RPipelineLayout() = default;
+};
+
+struct SpecializationConstant
+{
+	uint32_t Id { 0 };
+	std::vector<std::byte> Data;
+};
+
+struct PipelineShaderStage
+{
+	std::shared_ptr<RShader> Shader;
+	std::vector<SpecializationConstant> SpecializationConstants;
+};
+
+struct VertexBufferLayout
+{
+	uint32_t Binding { 0 };
+	uint32_t Stride { 0 };
+	EVertexInputRate InputRate { EVertexInputRate::PerVertex };
+};
+
+struct VertexAttribute
+{
+	uint32_t Location { 0 };
+	uint32_t Binding { 0 };
+	EVertexFormat Format { EVertexFormat::Float3 };
+	uint32_t Offset { 0 };
+};
+
+struct VertexInputState
+{
+	std::vector<VertexBufferLayout> Buffers;
+	std::vector<VertexAttribute> Attributes;
+};
+
+struct InputAssemblyState
+{
+	EPrimitiveTopology Topology { EPrimitiveTopology::TriangleList };
+	bool PrimitiveRestartEnable { false };
+	uint32_t PatchControlPoints { 0 };
+};
+
+struct RasterizerState
+{
+	EFillMode FillMode { EFillMode::Solid };
+	ECullMode CullMode { ECullMode::Back };
+	EFrontFace FrontFace { EFrontFace::CounterClockwise };
+	bool DepthClampEnable { false };
+	bool RasterizerDiscardEnable { false };
+	bool DepthBiasEnable { false };
+	float DepthBiasConstantFactor { 0.0f };
+	float DepthBiasClamp { 0.0f };
+	float DepthBiasSlopeFactor { 0.0f };
+	float LineWidth { 1.0f };
+};
+
+struct MultisampleState
+{
+	bool SampleShadingEnable { false };
+	float MinSampleShading { 0.0f };
+	uint64_t SampleMask { ~uint64_t { 0 } };
+	bool AlphaToCoverageEnable { false };
+	bool AlphaToOneEnable { false };
+};
+
+struct StencilFaceState
+{
+	EStencilOp FailOp { EStencilOp::Keep };
+	EStencilOp PassOp { EStencilOp::Keep };
+	EStencilOp DepthFailOp { EStencilOp::Keep };
+	ECompareOp CompareOp { ECompareOp::Always };
+	uint32_t CompareMask { 0xFFFFFFFFu };
+	uint32_t WriteMask { 0xFFFFFFFFu };
+	uint32_t Reference { 0 };
+};
+
+struct DepthStencilState
+{
+	bool DepthTestEnable { false };
+	bool DepthWriteEnable { false };
+	ECompareOp DepthCompareOp { ECompareOp::Less };
+	bool DepthBoundsTestEnable { false };
+	float MinDepthBounds { 0.0f };
+	float MaxDepthBounds { 1.0f };
+	bool StencilTestEnable { false };
+	StencilFaceState Front {};
+	StencilFaceState Back {};
+};
+
+struct BlendComponent
+{
+	EBlendFactor SrcFactor { EBlendFactor::One };
+	EBlendFactor DstFactor { EBlendFactor::Zero };
+	EBlendOp Operation { EBlendOp::Add };
+
+	constexpr bool operator==(const BlendComponent&) const = default;
+};
+
+struct ColorTargetBlendState
+{
+	bool BlendEnable { false };
+	BlendComponent Color {};
+	BlendComponent Alpha {};
+	EColorWriteMask WriteMask { EColorWriteMask_t::All };
+
+	constexpr bool operator==(const ColorTargetBlendState&) const = default;
+};
+
+struct BlendState
+{
+	std::array<ColorTargetBlendState, MaxColorAttachments> Attachments {};
+};
+
+struct PipelineCompileOptions
+{
+	EPipelineCompileFlags Flags {};
+	std::shared_ptr<RPipelineCache> Cache;
+};
+
+/**
+ * @brief Graphics Pipeline 的完整 owning 描述符。
+ *
+ * 描述符可安全复制或移动到后台线程。空 Shader 字段表示对应 Stage 未使用。
+ * Vertex 与 Mesh 路径互斥；Task Shader 只能与 Mesh Shader 一起使用。
+ */
+struct GraphicsPipelineDescriptor
+{
+	std::shared_ptr<RPipelineLayout> Layout;
+	PipelineShaderStage Vertex;
+	PipelineShaderStage Pixel;
+	PipelineShaderStage Geometry;
+	PipelineShaderStage Hull;
+	PipelineShaderStage Domain;
+	PipelineShaderStage Task;
+	PipelineShaderStage Mesh;
+	VertexInputState VertexInput {};
+	InputAssemblyState InputAssembly {};
+	RasterizerState Rasterizer {};
+	MultisampleState Multisample {};
+	DepthStencilState DepthStencil {};
+	BlendState Blend {};
+	RenderingSignature Rendering {};
+	EDynamicStates DynamicStates {
+		EDynamicStates(EDynamicState_t::Viewport) | EDynamicState_t::Scissor
+	};
+	PipelineCompileOptions Compile {};
+	std::string DebugName;
+};
+
+struct ComputePipelineDescriptor
+{
+	std::shared_ptr<RPipelineLayout> Layout;
+	PipelineShaderStage Compute;
+	PipelineCompileOptions Compile {};
+	std::string DebugName;
+};
+
+/**
+ * @brief 后端 Pipeline 二进制缓存。
+ *
+ * serialize() 返回的字节只保证可交给同一 RHI 版本、后端、设备和兼容驱动。
+ * 磁盘层仍必须附加并校验 RHI/Schema/设备/驱动版本头。
+ */
+class RPipelineCache
+{
+public:
+	virtual ~RPipelineCache() = default;
+	virtual void merge(std::span<const std::shared_ptr<RPipelineCache>> Sources) = 0;
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual std::vector<std::byte> serialize() const = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+};
+
+struct PipelineCacheDescriptor
+{
+	std::vector<std::byte> InitialData;
+	std::string DebugName;
+};
+
 class RPipeline
 {
 public:
 	virtual ~RPipeline() = default;
+	RPipeline(const RPipeline&) = delete;
+	RPipeline& operator=(const RPipeline&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
 	[[nodiscard]] virtual EPipelineType getType() const noexcept = 0;
-	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+	[[nodiscard]] virtual const std::shared_ptr<RPipelineLayout>& getLayout() const noexcept = 0;
 	[[nodiscard]] virtual const RenderingSignature* getRenderingSignature() const noexcept = 0;
+	[[nodiscard]] virtual EDynamicStates getDynamicStates() const noexcept = 0;
+	[[nodiscard]] virtual uint64_t getCacheKey() const noexcept = 0;
+	[[nodiscard]] virtual const std::string& getDebugName() const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RPipeline() = default;
 };
 
 class RCommandList
@@ -756,6 +1161,15 @@ public:
 
 	virtual void setViewports(std::span<const Viewport> Viewports) = 0;
 	virtual void setScissors(std::span<const RenderArea> Scissors) = 0;
+	virtual void setBlendConstants(const std::array<float, 4>& Constants) = 0;
+	virtual void setStencilReference(uint32_t FrontReference, uint32_t BackReference) = 0;
+	virtual void setDepthBias(float ConstantFactor, float Clamp, float SlopeFactor) = 0;
+	virtual void setLineWidth(float Width) = 0;
+	virtual void pushConstants(
+		const std::shared_ptr<RPipelineLayout>& Layout,
+		EShaderStage Stages,
+		uint32_t Offset,
+		std::span<const std::byte> Data) = 0;
 	virtual void bindPipeline(const std::shared_ptr<RPipeline>& Pipeline) = 0;
 
 	virtual void draw(
@@ -882,8 +1296,17 @@ public:
 	virtual RImage* createImage() = 0;
     virtual std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) = 0;
 	virtual RSampler* createSampler() = 0;
-	virtual RShader* createShader() = 0;
-	virtual RPipeline* createPipeline() = 0;
+	virtual std::shared_ptr<RShader> createShader(const ShaderDescriptor& Desc) = 0;
+	virtual std::shared_ptr<RBindGroupLayout> createBindGroupLayout(
+		const BindGroupLayoutDescriptor& Desc) = 0;
+	virtual std::shared_ptr<RPipelineLayout> createPipelineLayout(
+		const PipelineLayoutDescriptor& Desc) = 0;
+	virtual std::shared_ptr<RPipelineCache> createPipelineCache(
+		const PipelineCacheDescriptor& Desc = {}) = 0;
+	virtual std::shared_ptr<RPipeline> createGraphicsPipeline(
+		const GraphicsPipelineDescriptor& Desc) = 0;
+	virtual std::shared_ptr<RPipeline> createComputePipeline(
+		const ComputePipelineDescriptor& Desc) = 0;
 	virtual std::shared_ptr<RCommandList> createCommandList(
 		const CommandListDescriptor& Desc = {}) = 0;
 	virtual RSwapchain* createSwapchain() = 0;

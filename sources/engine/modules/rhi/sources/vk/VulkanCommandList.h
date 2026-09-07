@@ -44,6 +44,15 @@ public:
 
 	void setViewports(std::span<const Viewport> Viewports) override;
 	void setScissors(std::span<const RenderArea> Scissors) override;
+	void setBlendConstants(const std::array<float, 4>& Constants) override;
+	void setStencilReference(uint32_t FrontReference, uint32_t BackReference) override;
+	void setDepthBias(float ConstantFactor, float Clamp, float SlopeFactor) override;
+	void setLineWidth(float Width) override;
+	void pushConstants(
+		const std::shared_ptr<RPipelineLayout>& Layout,
+		EShaderStage Stages,
+		uint32_t Offset,
+		std::span<const std::byte> Data) override;
 	void bindPipeline(const std::shared_ptr<RPipeline>& Pipeline) override;
 
 	void draw(
@@ -67,7 +76,9 @@ private:
 	void requireInsideRendering(const char* Operation) const;
 	void requireOutsideRendering(const char* Operation) const;
 	void validateRenderingInfo(const RenderingInfo& Info) const;
+	void validateRenderingCompatibility(const RPipeline& Pipeline) const;
 	void validateGraphicsPipeline() const;
+	void validateDynamicStates(const RPipeline& Pipeline) const;
 	void retainRenderingResources(const RenderingInfo& Info);
 
 	VulkanDevice* Device { nullptr };
@@ -77,6 +88,7 @@ private:
 	std::shared_ptr<RPipeline> BoundGraphicsPipeline;
 	std::shared_ptr<RPipeline> BoundComputePipeline;
 	RenderingSignature ActiveRenderingSignature {};
+	EDynamicStates InitializedDynamicStates {};
 	std::vector<std::shared_ptr<void>> RetainedResources;
 	vk::UniqueCommandPool CommandPool;
 	vk::UniqueCommandBuffer CommandBuffer;

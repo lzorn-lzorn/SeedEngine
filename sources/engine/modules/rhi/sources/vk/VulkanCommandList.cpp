@@ -3,6 +3,7 @@
 #include "VulkanDevice.h"
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
+#include "VulkanPipeline.hpp"
 #include "VulkanRHI.h"
 
 #include <algorithm>
@@ -264,6 +265,7 @@ void VulkanCommandList::reset()
 	BoundGraphicsPipeline.reset();
 	BoundComputePipeline.reset();
 	ActiveRenderingSignature = {};
+	InitializedDynamicStates = {};
 	RetainedResources.clear();
 }
 
@@ -427,6 +429,8 @@ void VulkanCommandList::beginRendering(const RenderingInfo& Info)
 		.setPDepthAttachment(depth_pointer)
 		.setPStencilAttachment(stencil_pointer);
 
+	if (BoundGraphicsPipeline)
+		validateRenderingCompatibility(*BoundGraphicsPipeline);
 	CommandBuffer->beginRendering(rendering_info);
 	InsideRendering = true;
 	retainRenderingResources(Info);
@@ -465,6 +469,7 @@ void VulkanCommandList::setViewports(std::span<const Viewport> Viewports)
 			viewport.MaxDepth);
 	}
 	CommandBuffer->setViewport(0, vk_viewports);
+	InitializedDynamicStates.set(EDynamicState_t::Viewport);
 }
 
 void VulkanCommandList::setScissors(std::span<const RenderArea> Scissors)
@@ -483,19 +488,83 @@ void VulkanCommandList::setScissors(std::span<const RenderArea> Scissors)
 			vk::Extent2D(scissor.Width, scissor.Height));
 	}
 	CommandBuffer->setScissor(0, vk_scissors);
+	InitializedDynamicStates.set(EDynamicState_t::Scissor);
+}
+
+void VulkanCommandList::setBlendConstants(const std::array<float, 4>& Constants)
+{
+	requireRecording("setBlendConstants");
+	CommandBuffer->setBlendConstants(Constants.data());
+	InitializedDynamicStates.set(EDynamicState_t::BlendConstants);
+}
+
+void VulkanCommandList::setStencilReference(
+	uint32_t FrontReference,
+	uint32_t BackReference)
+{
+	requireRecording("setStencilReference");
+	CommandBuffer->setStencilReference(vk::StencilFaceFlagBits::eFront, FrontReference);
+	CommandBuffer->setStencilReference(vk::StencilFaceFlagBits::eBack, BackReference);
+	InitializedDynamicStates.set(EDynamicState_t::StencilReference);
+}
+
+void VulkanCommandList::setDepthBias(float ConstantFactor, float Clamp, float SlopeFactor)
+{
+	requireRecording("setDepthBias");
+	CommandBuffer->setDepthBias(ConstantFactor, Clamp, SlopeFactor);
+	InitializedDynamicStates.set(EDynamicState_t::DepthBias);
+}
+
+void VulkanCommandList::setLineWidth(float Width)
+{
+	requireRecording("setLineWidth");
+	if (Width <= 0.0f)
+		throw std::invalid_argument("Dynamic line width must be positive.");
+	if (Width != 1.0f && !Device->getFeatures().WideLines)
+		throw std::invalid_argument("Wide lines are unsupported by this device.");
+	CommandBuffer->setLineWidth(Width);
+	InitializedDynamicStates.set(EDynamicState_t::LineWidth);
+}
+
+void VulkanCommandList::pushConstants(
+	const std::shared_ptr<RPipelineLayout>& Layout,
+	EShaderStage Stages,
+	uint32_t Offset,
+	std::span<const std::byte> Data)
+{
+	requireRecording("pushConstants");
+	auto vk_layout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Layout);
+	if (!vk_layout || &vk_layout->getDevice() != Device || !vk_layout->isValid())
+		throw std::invalid_argument("Push constant layout belongs to another backend or device.");
+	if (!Stages || Data.empty() || Offset % 4 != 0 || Data.size() % 4 != 0 ||
+		Data.size() > Device->getLimits().MaxPushConstantSize ||
+		Offset > Device->getLimits().MaxPushConstantSize - Data.size())
+	{
+		throw std::invalid_argument("Push constant update is empty, unaligned or exceeds device limits.");
+	}
+	if (!vk_layout->supportsPushConstants(Stages, Offset, static_cast<uint32_t>(Data.size())))
+		throw std::invalid_argument("Push constant update is not covered by the pipeline layout.");
+	CommandBuffer->pushConstants(
+		vk_layout->getVkPipelineLayout(),
+		toVk(Stages),
+		Offset,
+		static_cast<uint32_t>(Data.size()),
+		Data.data());
+	RetainedResources.emplace_back(Layout);
 }
 
 void VulkanCommandList::bindPipeline(const std::shared_ptr<RPipeline>& Pipeline)
 {
 	requireRecording("bindPipeline");
-	if (!Pipeline || !Pipeline->getNativeHandle())
+	auto vk_pipeline = std::dynamic_pointer_cast<VulkanPipeline>(Pipeline);
+	if (!vk_pipeline || &vk_pipeline->getDevice() != Device || !vk_pipeline->isValid())
 		throw std::invalid_argument("Cannot bind an invalid pipeline.");
-
-	const auto native_pipeline = vk::Pipeline(
-		reinterpret_cast<VkPipeline>(Pipeline->getNativeHandle()));
+	const vk::Pipeline native_pipeline = vk_pipeline->getVkPipeline();
 	switch (Pipeline->getType())
 	{
 	case EPipelineType::Graphics:
+		if (InsideRendering)
+			validateRenderingCompatibility(*Pipeline);
 		CommandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, native_pipeline);
 		BoundGraphicsPipeline = Pipeline;
 		break;
@@ -505,8 +574,9 @@ void VulkanCommandList::bindPipeline(const std::shared_ptr<RPipeline>& Pipeline)
 		BoundComputePipeline = Pipeline;
 		break;
 	case EPipelineType::None:
+	case EPipelineType::RayTracing:
 	default:
-		throw std::invalid_argument("Cannot bind a pipeline without a type.");
+		throw std::invalid_argument("This command list cannot bind the requested pipeline type.");
 	}
 	RetainedResources.emplace_back(Pipeline);
 }
@@ -666,11 +736,24 @@ void VulkanCommandList::validateGraphicsPipeline() const
 {
 	if (!BoundGraphicsPipeline)
 		throw std::logic_error("Draw requires a bound graphics pipeline.");
-	const auto* signature = BoundGraphicsPipeline->getRenderingSignature();
+	validateRenderingCompatibility(*BoundGraphicsPipeline);
+	validateDynamicStates(*BoundGraphicsPipeline);
+}
+
+void VulkanCommandList::validateRenderingCompatibility(const RPipeline& Pipeline) const
+{
+	const auto* signature = Pipeline.getRenderingSignature();
 	if (!signature)
 		throw std::logic_error("A graphics pipeline must expose a rendering signature.");
-	if (*signature != ActiveRenderingSignature)
+	if (!isRenderingCompatible(*signature, ActiveRenderingSignature))
 		throw std::logic_error("The graphics pipeline is incompatible with the active rendering attachments.");
+}
+
+void VulkanCommandList::validateDynamicStates(const RPipeline& Pipeline) const
+{
+	const EDynamicStates missing = Pipeline.getDynamicStates() & ~InitializedDynamicStates;
+	if (missing)
+		throw std::logic_error("Draw requires every dynamic pipeline state to be initialized.");
 }
 
 void VulkanCommandList::retainRenderingResources(const RenderingInfo& Info)

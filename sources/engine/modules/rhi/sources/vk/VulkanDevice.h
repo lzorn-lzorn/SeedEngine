@@ -66,8 +66,17 @@ public:
 	RImage* createImage() override;
     std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) override;
 	RSampler* createSampler() override;
-	RShader* createShader() override;
-	RPipeline* createPipeline() override;
+    std::shared_ptr<RShader> createShader(const ShaderDescriptor& Desc) override;
+    std::shared_ptr<RBindGroupLayout> createBindGroupLayout(
+        const BindGroupLayoutDescriptor& Desc) override;
+    std::shared_ptr<RPipelineLayout> createPipelineLayout(
+        const PipelineLayoutDescriptor& Desc) override;
+    std::shared_ptr<RPipelineCache> createPipelineCache(
+        const PipelineCacheDescriptor& Desc = {}) override;
+    std::shared_ptr<RPipeline> createGraphicsPipeline(
+        const GraphicsPipelineDescriptor& Desc) override;
+    std::shared_ptr<RPipeline> createComputePipeline(
+        const ComputePipelineDescriptor& Desc) override;
     std::shared_ptr<RCommandList> createCommandList(
         const CommandListDescriptor& Desc = {}) override;
 	RSwapchain* createSwapchain() override;

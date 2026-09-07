@@ -431,7 +431,18 @@ void VulkanRHI::createLogicalDevice()
     enabled_vulkan13.pNext = &enabled_multiview;
     enabled_multiview.pNext = &enabled_separate_layouts;
 
+    // Pipeline 后端只在对应能力实际启用后对外报告支持。这里按硬件支持启用
+    // 常用固定功能；扩展动态状态、Mesh 和 Ray Tracing 仍由后续扩展链单独管理。
     vk::PhysicalDeviceFeatures enabled_features{};
+    enabled_features.geometryShader = supported_features.features.geometryShader;
+    enabled_features.tessellationShader = supported_features.features.tessellationShader;
+    enabled_features.fillModeNonSolid = supported_features.features.fillModeNonSolid;
+    enabled_features.wideLines = supported_features.features.wideLines;
+    enabled_features.depthClamp = supported_features.features.depthClamp;
+    enabled_features.depthBounds = supported_features.features.depthBounds;
+    enabled_features.sampleRateShading = supported_features.features.sampleRateShading;
+    enabled_features.alphaToOne = supported_features.features.alphaToOne;
+    enabled_features.independentBlend = supported_features.features.independentBlend;
 
     // ---- 启用扩展(与之前检查对应) ----
     std::vector<const char*> enabledExtensions;

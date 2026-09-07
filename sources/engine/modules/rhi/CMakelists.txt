@@ -149,6 +149,11 @@ add_internal_module(RHI
     ALIAS               Module::RHI
 )
 
+target_compile_definitions(RHI PRIVATE
+    RHI_ENABLE_VALIDATION=$<BOOL:${RHI_ENABLE_VALIDATION}>
+    RHI_ENABLE_PIPELINE_STATISTICS=$<BOOL:${RHI_ENABLE_PIPELINE_STATISTICS}>
+)
+
 if(GRAPHICS_API_DX12)
     target_compile_definitions(RHI PRIVATE GRAPHICS_API_DX12=1)
     target_include_directories(RHI PRIVATE ${DX12_INCLUDE_DIR})
