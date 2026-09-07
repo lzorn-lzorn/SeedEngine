@@ -1,5 +1,6 @@
 #include "RHI.h"
 #include "VulkanRHI.h"
+#include "VulkanCommandList.h"
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanImageView.h"
@@ -7,6 +8,40 @@
 
 namespace rhi
 {
+
+VulkanDevice::VulkanDevice(
+	vk::PhysicalDevice& InRealGPU,
+	vk::UniqueDevice& InLogicalDevice,
+	uint32_t InGraphicsQueueFamilyIndex)
+	: RealGPU(InRealGPU)
+	, LogicalDevice(InLogicalDevice)
+	, GraphicsQueueFamilyIndex(InGraphicsQueueFamilyIndex)
+	, GraphicsQueue(LogicalDevice->getQueue(InGraphicsQueueFamilyIndex, 0))
+{
+	const auto queue_families = RealGPU.getQueueFamilyProperties();
+	if (InGraphicsQueueFamilyIndex >= queue_families.size())
+		throw std::out_of_range("Vulkan queue family index is out of range.");
+	QueueCapabilities = queue_families[InGraphicsQueueFamilyIndex].queueFlags;
+
+	const auto properties = RealGPU.getProperties();
+	Limits.MaxColorAttachments = properties.limits.maxColorAttachments;
+	Limits.MaxViewports = properties.limits.maxViewports;
+	Limits.MaxFramebufferWidth = properties.limits.maxFramebufferWidth;
+	Limits.MaxFramebufferHeight = properties.limits.maxFramebufferHeight;
+
+	vk::PhysicalDeviceVulkan13Features vulkan13_features;
+	vk::PhysicalDeviceMultiviewFeatures multiview_features;
+	vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures separate_layout_features;
+	vulkan13_features.pNext = &multiview_features;
+	multiview_features.pNext = &separate_layout_features;
+	vk::PhysicalDeviceFeatures2 features;
+	features.pNext = &vulkan13_features;
+	RealGPU.getFeatures2(&features);
+	Features.DynamicRendering = vulkan13_features.dynamicRendering == VK_TRUE;
+	Features.Synchronization2 = vulkan13_features.synchronization2 == VK_TRUE;
+	Features.Multiview = multiview_features.multiview == VK_TRUE;
+	Features.SeparateDepthStencilLayouts = separate_layout_features.separateDepthStencilLayouts == VK_TRUE;
+}
 
 namespace
 {
@@ -47,14 +82,30 @@ RPipeline* VulkanDevice::createPipeline()
 	throwResourceNotImplemented("pipeline");
 }
 
-RRenderPass* VulkanDevice::createRenderPass()
+std::shared_ptr<RCommandList> VulkanDevice::createCommandList(
+	const CommandListDescriptor& Desc)
 {
-	throwResourceNotImplemented("render pass");
-}
-
-RCommandList* VulkanDevice::createCommandList()
-{
-	throwResourceNotImplemented("command list");
+	if (!Features.DynamicRendering || !Features.Synchronization2)
+	{
+		throw std::logic_error(
+			"Vulkan command lists require dynamic rendering and synchronization2.");
+	}
+	const vk::QueueFlagBits required_capability = [&]
+	{
+		switch (Desc.QueueType)
+		{
+		case ECommandQueueType::Graphics: return vk::QueueFlagBits::eGraphics;
+		case ECommandQueueType::Compute: return vk::QueueFlagBits::eCompute;
+		case ECommandQueueType::Copy: return vk::QueueFlagBits::eTransfer;
+		}
+		return vk::QueueFlagBits::eGraphics;
+	}();
+	if (!(QueueCapabilities & required_capability))
+		throw std::invalid_argument("The Vulkan queue does not support the requested command list type.");
+	return std::make_shared<VulkanCommandList>(
+		*this,
+		GraphicsQueueFamilyIndex,
+		Desc);
 }
 
 RSwapchain* VulkanDevice::createSwapchain()
@@ -112,19 +163,19 @@ void* VulkanDevice::getNativeHandle() const
 }
 
 uint32_t VulkanDevice::findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags Properties)
-    {
-        vk::PhysicalDeviceMemoryProperties memory_properties = RealGPU.getMemoryProperties();
+{
+	vk::PhysicalDeviceMemoryProperties memory_properties = RealGPU.getMemoryProperties();
 
-        for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++) 
-        {
-            if ((TypeBits & (1 << i)) && 
-                (memory_properties.memoryTypes[i].propertyFlags & Properties) == Properties) 
-            {
-                return i;
-            }
-        }
-        throw std::runtime_error("Failed to find suitable memory type!");
-    }
+	for (uint32_t i = 0; i < memory_properties.memoryTypeCount; i++)
+	{
+		if ((TypeBits & (1u << i)) &&
+			(memory_properties.memoryTypes[i].propertyFlags & Properties) == Properties)
+		{
+			return i;
+		}
+	}
+	throw std::runtime_error("Failed to find a suitable Vulkan memory type.");
+}
 
 }
 

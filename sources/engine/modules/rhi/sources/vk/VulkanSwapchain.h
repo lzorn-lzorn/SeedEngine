@@ -3,8 +3,6 @@
 #include <expected>
 #include <vulkan/vulkan.hpp>
 #include <generic_application/window/GenericWindow.hpp>
-#include "VulkanRHI.h"
-#include "vulkan/vulkan.hpp"
 
 namespace rhi
 {
@@ -34,7 +32,7 @@ private:
 	};
 public:
 	VulkanSwapchain(vk::PhysicalDevice&, vk::Instance&, vk::Device&);
-	virtual ~VulkanSwapchain() = default;
+	~VulkanSwapchain() override;
 
 	void resize(uint32_t Width, uint32_t Height) override;
 	void present() override;
@@ -51,15 +49,14 @@ private:
 	vk::PhysicalDevice& RealGPU;
 	vk::Instance& VulkanInstance;
 	vk::Device& VulkanDevice;
-	vk::SurfaceKHR Surface;
-	vk::SwapchainKHR Swapchain;
+	vk::SurfaceKHR Surface { VK_NULL_HANDLE };
+	vk::SwapchainKHR Swapchain { VK_NULL_HANDLE };
 
-	vk::Format SwapchainImageFormat;
-	vk::Extent2D SwapchainExtent;
+	vk::Format SwapchainImageFormat { vk::Format::eUndefined };
+	vk::Extent2D SwapchainExtent {};
 	// TODO: 存 RHI 资源对象?
 	std::vector<vk::Image> SwapchainImages;
-	std::vector<vk::ImageView> SwapchainImageViews;
-    std::vector<vk::Framebuffer> SwapChainFramebuffers;
+	std::vector<vk::UniqueImageView> SwapchainImageViews;
 };
 
 }

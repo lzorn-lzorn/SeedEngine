@@ -56,11 +56,14 @@ inline auto toVk(EShaderStage Stage) -> vk::ShaderStageFlags
 	if (Stage.has(EShaderStage_t::Pixel)) result |= vk::ShaderStageFlags::BitsType::eFragment;
 	if (Stage.has(EShaderStage_t::Compute)) result |= vk::ShaderStageFlags::BitsType::eCompute;
 	if (Stage.has(EShaderStage_t::Geometry)) result |= vk::ShaderStageFlags::BitsType::eGeometry;
+	if (Stage.has(EShaderStage_t::Hull)) result |= vk::ShaderStageFlags::BitsType::eTessellationControl;
+	if (Stage.has(EShaderStage_t::Domain)) result |= vk::ShaderStageFlags::BitsType::eTessellationEvaluation;
 #ifdef VK_SHADER_STAGE_MESH_BIT_EXT
 	if (Stage.has(EShaderStage_t::Mesh)) result |= vk::ShaderStageFlags::BitsType::eMesh;
 #endif
 #ifdef VK_SHADER_STAGE_TASK_BIT_EXT
-	if (Stage.has(EShaderStage_t::Amplification)) result |= vk::ShaderStageFlags::BitsType::eTask;
+	if (Stage.has(EShaderStage_t::Amplification) || Stage.has(EShaderStage_t::Task))
+		result |= vk::ShaderStageFlags::BitsType::eTask;
 #endif
 	return result;
 }
@@ -178,8 +181,13 @@ inline auto toVk(EBlendFactor Factor) -> vk::BlendFactor
 	switch (Factor)
 	{
 	case EBlendFactor::Zero: return vk::BlendFactor::eZero;
+	case EBlendFactor::SrcColor: return vk::BlendFactor::eSrcColor;
 	case EBlendFactor::SrcAlpha: return vk::BlendFactor::eSrcAlpha;
 	case EBlendFactor::OneMinusSrcAlpha: return vk::BlendFactor::eOneMinusSrcAlpha;
+	case EBlendFactor::DstAlpha: return vk::BlendFactor::eDstAlpha;
+	case EBlendFactor::OneMinusDstAlpha: return vk::BlendFactor::eOneMinusDstAlpha;
+	case EBlendFactor::DstColor: return vk::BlendFactor::eDstColor;
+	case EBlendFactor::OneMinusDstColor: return vk::BlendFactor::eOneMinusDstColor;
 	case EBlendFactor::One:
 	default:
 		return vk::BlendFactor::eOne;
@@ -258,12 +266,11 @@ inline auto toVk(EResourceState State) -> vk::PipelineStageFlags
 }
 
 
-template <>
-inline auto toVk(EResourceState State) -> vk::AccessFlags;
-
 inline auto toVk(ESharingMode Mode) -> vk::SharingMode
 {
-	return (Mode == ESharingMode::Exclusive) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent;
+	return Mode == ESharingMode::Concurrent
+		? vk::SharingMode::eConcurrent
+		: vk::SharingMode::eExclusive;
 }
 
 inline auto toVk(EMemoryProperty Properties) -> vk::MemoryPropertyFlags
@@ -453,6 +460,7 @@ private:
 	vk::PhysicalDevice RealGPU;
 	vk::UniqueDevice LogicalDevice;
 	vk::SurfaceKHR Surface { VK_NULL_HANDLE };
+	uint32_t GraphicsQueueFamilyIndex { UINT32_MAX };
 	bool IsInitialized { false };
 
 };

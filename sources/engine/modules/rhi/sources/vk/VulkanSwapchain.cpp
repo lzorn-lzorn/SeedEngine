@@ -1,5 +1,6 @@
 #include "VulkanSwapchain.h"
 #include "VulkanDevice.h"
+#include "VulkanRHI.h"
 #include "vulkan/vulkan.hpp"
 #include <vulkan/vulkan.hpp>
 #include <cassert>
@@ -22,6 +23,22 @@ VulkanSwapchain::VulkanSwapchain(vk::PhysicalDevice& RealGPU, vk::Instance& InVk
 	, VulkanDevice(InDevice)
 	, Surface(VK_NULL_HANDLE)
 {
+}
+
+VulkanSwapchain::~VulkanSwapchain()
+{
+	SwapchainImageViews.clear();
+	SwapchainImages.clear();
+	if (Swapchain)
+	{
+		VulkanDevice.destroySwapchainKHR(Swapchain);
+		Swapchain = VK_NULL_HANDLE;
+	}
+	if (Surface)
+	{
+		VulkanInstance.destroySurfaceKHR(Surface);
+		Surface = VK_NULL_HANDLE;
+	}
 }
 
 
@@ -75,23 +92,24 @@ std::expected<bool, std::string> VulkanSwapchain::checkSwapChainSupport()
 
 	// 检查交换链的宽度和高度是否在支持的范围内
 	if ((getWidth() != 0xFFFFFFFF && getHeight() != 0xFFFFFFFF) &&
-		(getWidth() <= supported.Capabilities.minImageExtent.width ||
-		getWidth() >= supported.Capabilities.maxImageExtent.width ||
-		getHeight() <= supported.Capabilities.minImageExtent.height ||
-		getHeight() >= supported.Capabilities.maxImageExtent.height))
+		(getWidth() < supported.Capabilities.minImageExtent.width ||
+		getWidth() > supported.Capabilities.maxImageExtent.width ||
+		getHeight() < supported.Capabilities.minImageExtent.height ||
+		getHeight() > supported.Capabilities.maxImageExtent.height))
 	{
 		result = std::unexpected("Swapchain extent is out of supported range.");
 	}
 
 	// 检查交换链图像数量是否在支持的范围内
 	if (getProperties().ImageCount < supported.Capabilities.minImageCount || 
-		(getProperties().ImageCount > 0 && getProperties().ImageCount > supported.Capabilities.maxImageCount))
+		(supported.Capabilities.maxImageCount > 0 &&
+		 getProperties().ImageCount > supported.Capabilities.maxImageCount))
 	{
 		result = std::unexpected("Swapchain image count is out of supported range.");
 	}
 
 	// 检查当前呈现模式硬件是否支持
-	if (auto SupportedPresetModes =  RealGPU.getSurfacePresentModesKHR();
+	if (auto SupportedPresetModes = RealGPU.getSurfacePresentModesKHR(Surface);
 		std::find(SupportedPresetModes.begin(), SupportedPresetModes.end(), toVk(getProperties().PresentMode)) == SupportedPresetModes.end())
 	{
 		result = std::unexpected("Selected present mode is not supported.");
@@ -172,6 +190,18 @@ void VulkanSwapchain::initializeVkSwapchain()
 
 	QueueFamilyIndices indices = QueueFamilyIndices::findQueueFamilies(RealGPU, Surface);
 	uint32_t queueFamilyIndices[] = {indices.GraphicsFamily.value(), indices.PresentFamily.value()};
+	const bool use_concurrent_sharing =
+		indices.GraphicsFamily != indices.PresentFamily &&
+		getProperties().ImageSharingMode != ESharingMode::Exclusive;
+
+	vk::SwapchainKHR old_swapchain = VK_NULL_HANDLE;
+	if (getProperties().OldSwapchain)
+	{
+		auto* old_vulkan_swapchain = dynamic_cast<VulkanSwapchain*>(getProperties().OldSwapchain);
+		if (!old_vulkan_swapchain)
+			throw std::invalid_argument("Old swapchain belongs to another RHI backend.");
+		old_swapchain = old_vulkan_swapchain->getVkSwapchain();
+	}
 
 	SwapchainExtent = vk::Extent2D{
 		static_cast<uint32_t>(getWidth()),
@@ -185,17 +215,26 @@ void VulkanSwapchain::initializeVkSwapchain()
 		.setImageExtent(SwapchainExtent)
 		.setImageArrayLayers(1)
 		.setImageUsage(toVk(getProperties().ImageUsage))
-		.setImageSharingMode(toVk(getProperties().ImageSharingMode))
+		.setImageSharingMode(use_concurrent_sharing
+			? vk::SharingMode::eConcurrent
+			: vk::SharingMode::eExclusive)
 		.setPreTransform(toVk(getProperties().PreTransform))
 		.setCompositeAlpha(toVk(getProperties().CompositeAlpha))
 		.setPresentMode(toVk(getProperties().PresentMode))
 		.setClipped(getProperties().Clipped)
-		.setOldSwapchain(static_cast<VulkanSwapchain*>(getProperties().OldSwapchain)->getVkSwapchain());
+		.setOldSwapchain(old_swapchain);
+	if (use_concurrent_sharing)
+	{
+		create_info
+			.setQueueFamilyIndexCount(2)
+			.setPQueueFamilyIndices(queueFamilyIndices);
+	}
 
 	Swapchain = VulkanDevice.createSwapchainKHR(create_info);
 	SwapchainImages = VulkanDevice.getSwapchainImagesKHR(Swapchain);
 	SwapchainImageFormat = toVk(getProperties().Format);
 
+	SwapchainImageViews.clear();
 	SwapchainImageViews.reserve(SwapchainImages.size());
     for (auto image : SwapchainImages) {
         vk::ImageViewCreateInfo view_info;
@@ -204,7 +243,7 @@ void VulkanSwapchain::initializeVkSwapchain()
 				.setFormat(SwapchainImageFormat)
 				.setSubresourceRange({ vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 });
 
-        SwapchainImageViews.push_back(VulkanDevice.createImageView(view_info));
+		SwapchainImageViews.push_back(VulkanDevice.createImageViewUnique(view_info));
     }
 }
 

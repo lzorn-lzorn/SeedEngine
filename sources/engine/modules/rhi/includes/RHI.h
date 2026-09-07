@@ -1,7 +1,9 @@
 #pragma once
 
+#include <array>
 #include <memory>
 #include <cstdint>
+#include <span>
 #include <core/wrappers/Flag.hpp>
 #include <core/math/MathCommon.hpp>
 #include <generic_application/window/GenericWindow.hpp>
@@ -271,6 +273,22 @@ enum class EStoreOp
 	DontCare
 };
 
+enum class EResolveMode : uint8_t
+{
+	None,
+	SampleZero,
+	Average,
+	Min,
+	Max
+};
+
+enum class EClearColorType : uint8_t
+{
+	Float,
+	UInt,
+	SInt
+};
+
 enum class EVertexFormat {
     Float1,
     Float2,
@@ -419,13 +437,82 @@ class RImage;
 class RSampler;
 class RShader;
 class RPipeline;
-class RRenderPass;
 class RCommandList;
 class DeviceMemoryAllocator;
 class RTexture;
 class RImageView;
 class DeviceMemory;
 struct MemoryRequirements;
+
+inline constexpr uint32_t MaxColorAttachments = 8;
+
+struct ClearColorValue
+{
+	EClearColorType Type { EClearColorType::Float };
+	std::array<float, 4> Float32 { 0.0f, 0.0f, 0.0f, 0.0f };
+	std::array<uint32_t, 4> UInt32 {};
+	std::array<int32_t, 4> SInt32 {};
+};
+
+struct ClearDepthStencilValue
+{
+	float Depth { 1.0f };
+	uint32_t Stencil { 0 };
+};
+
+struct RenderArea
+{
+	int32_t X { 0 };
+	int32_t Y { 0 };
+	uint32_t Width { 0 };
+	uint32_t Height { 0 };
+};
+
+struct Viewport
+{
+	float X { 0.0f };
+	float Y { 0.0f };
+	float Width { 0.0f };
+	float Height { 0.0f };
+	float MinDepth { 0.0f };
+	float MaxDepth { 1.0f };
+};
+
+enum class ECommandListState : uint8_t
+{
+	Initial,
+	Recording,
+	Executable,
+	Invalid
+};
+
+enum class ECommandListLevel : uint8_t
+{
+	Primary,
+	Secondary
+};
+
+struct CommandListDescriptor
+{
+	ECommandQueueType QueueType { ECommandQueueType::Graphics };
+	ECommandListLevel Level { ECommandListLevel::Primary };
+};
+
+struct DeviceLimits
+{
+	uint32_t MaxColorAttachments { 1 };
+	uint32_t MaxViewports { 1 };
+	uint32_t MaxFramebufferWidth { 1 };
+	uint32_t MaxFramebufferHeight { 1 };
+};
+
+struct DeviceFeatures
+{
+	bool DynamicRendering { false };
+	bool Synchronization2 { false };
+	bool Multiview { false };
+	bool SeparateDepthStencilLayouts { false };
+};
 
 
 struct MemoryRequirements {
@@ -570,6 +657,127 @@ private:
 	const Descriptor_t Descriptor;
 };
 
+struct ColorAttachment
+{
+	std::shared_ptr<RImageView> View;
+	ELoadOp LoadOp { ELoadOp::Load };
+	EStoreOp StoreOp { EStoreOp::Store };
+	ClearColorValue ClearValue {};
+	std::shared_ptr<RImageView> ResolveView;
+	EResolveMode ResolveMode { EResolveMode::None };
+};
+
+struct DepthStencilAspectOps
+{
+	ELoadOp LoadOp { ELoadOp::Load };
+	EStoreOp StoreOp { EStoreOp::Store };
+	EResolveMode ResolveMode { EResolveMode::None };
+};
+
+struct DepthStencilAttachment
+{
+	std::shared_ptr<RImageView> View;
+	std::shared_ptr<RImageView> ResolveView;
+	DepthStencilAspectOps Depth {};
+	DepthStencilAspectOps Stencil {
+		.LoadOp = ELoadOp::DontCare,
+		.StoreOp = EStoreOp::DontCare,
+		.ResolveMode = EResolveMode::None
+	};
+	ClearDepthStencilValue ClearValue {};
+};
+
+struct RenderingInfo
+{
+	RenderArea Area {};
+	std::span<const ColorAttachment> ColorAttachments {};
+	const DepthStencilAttachment* DepthStencil { nullptr };
+	uint32_t LayerCount { 1 };
+	uint32_t ViewMask { 0 };
+};
+
+struct ImageSubresourceRange
+{
+	EImageAspect Aspect { EImageAspect::Auto };
+	uint32_t BaseMipLevel { 0 };
+	uint32_t MipLevelCount { 1 };
+	uint32_t BaseArrayLayer { 0 };
+	uint32_t ArrayLayerCount { 1 };
+};
+
+struct ImageBarrier
+{
+	std::shared_ptr<RImage> Image;
+	EResourceState Before { EResourceState::Undefined };
+	EResourceState After { EResourceState::Undefined };
+	ImageSubresourceRange Range {};
+};
+
+struct RenderingSignature
+{
+	std::array<EFormat, MaxColorAttachments> ColorFormats {};
+	uint32_t ColorAttachmentCount { 0 };
+	EFormat DepthFormat { EFormat::Undefined };
+	EFormat StencilFormat { EFormat::Undefined };
+	ESampleCount SampleCount { ESampleCount::Count1 };
+	uint32_t ViewMask { 0 };
+
+	constexpr bool operator==(const RenderingSignature&) const = default;
+};
+
+class RPipeline
+{
+public:
+	virtual ~RPipeline() = default;
+	[[nodiscard]] virtual EPipelineType getType() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+	[[nodiscard]] virtual const RenderingSignature* getRenderingSignature() const noexcept = 0;
+};
+
+class RCommandList
+{
+public:
+	virtual ~RCommandList() = default;
+	RCommandList(const RCommandList&) = delete;
+	RCommandList& operator=(const RCommandList&) = delete;
+
+	[[nodiscard]] virtual ECommandQueueType getQueueType() const noexcept = 0;
+	[[nodiscard]] virtual ECommandListLevel getLevel() const noexcept = 0;
+	[[nodiscard]] virtual ECommandListState getState() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+	virtual void begin() = 0;
+	virtual void end() = 0;
+	virtual void reset() = 0;
+
+	virtual void imageBarriers(std::span<const ImageBarrier> Barriers) = 0;
+	virtual void beginRendering(const RenderingInfo& Info) = 0;
+	virtual void endRendering() = 0;
+
+	virtual void setViewports(std::span<const Viewport> Viewports) = 0;
+	virtual void setScissors(std::span<const RenderArea> Scissors) = 0;
+	virtual void bindPipeline(const std::shared_ptr<RPipeline>& Pipeline) = 0;
+
+	virtual void draw(
+		uint32_t VertexCount,
+		uint32_t InstanceCount = 1,
+		uint32_t FirstVertex = 0,
+		uint32_t FirstInstance = 0) = 0;
+	virtual void drawIndexed(
+		uint32_t IndexCount,
+		uint32_t InstanceCount = 1,
+		uint32_t FirstIndex = 0,
+		int32_t VertexOffset = 0,
+		uint32_t FirstInstance = 0) = 0;
+	virtual void dispatch(
+		uint32_t GroupCountX,
+		uint32_t GroupCountY,
+		uint32_t GroupCountZ) = 0;
+
+protected:
+	RCommandList() = default;
+};
+
 class RSwapchain
 {
 public:
@@ -579,8 +787,8 @@ public:
 		EPresentMode PresentMode {EPresentMode::Mailbox};
 		ESurfaceTransform PreTransform {ESurfaceTransform::Identity}; // 表面变换(如旋转 90 度、水平翻转)
 		ECompositeAlpha CompositeAlpha {ECompositeAlpha::Opaque}; // 与窗口系统合成的 alpha 通道处理方式
-		EImageUsage ImageUsage;
-		uint32_t ImageCount;
+		EImageUsage ImageUsage { EImageUsage_t::Target };
+		uint32_t ImageCount { 2 };
 		ESharingMode ImageSharingMode {ESharingMode::Auto };
 		bool Clipped {true};
 		RSwapchain* OldSwapchain {nullptr}; // 重建交换链时, 用于传递旧的交换链以复用资源
@@ -629,7 +837,7 @@ public:
 		return *this;
 	}
 
-	RSwapchain& setuint32_t(uint32_t ImageCount)
+	RSwapchain& setImageCount(uint32_t ImageCount)
 	{
 		Properties.ImageCount = ImageCount;
 		return *this;
@@ -655,10 +863,10 @@ public:
 
 	ui::IGenericWindow* getNativeWindow() const { return NativeWindow; }
 	SwapchainProperties getProperties() const { return Properties; }
-	int32_t getWidth() const { return NativeWindow->getWidth(); }
-	int32_t getHeight() const { return NativeWindow->getHeight(); }
+	int32_t getWidth() const { return NativeWindow ? NativeWindow->getWidth() : 0; }
+	int32_t getHeight() const { return NativeWindow ? NativeWindow->getHeight() : 0; }
 private:
-	ui::IGenericWindow* NativeWindow;
+	ui::IGenericWindow* NativeWindow { nullptr };
 	SwapchainProperties Properties;
 
 };
@@ -676,8 +884,8 @@ public:
 	virtual RSampler* createSampler() = 0;
 	virtual RShader* createShader() = 0;
 	virtual RPipeline* createPipeline() = 0;
-	virtual RRenderPass* createRenderPass() = 0;
-	virtual RCommandList* createCommandList() = 0;
+	virtual std::shared_ptr<RCommandList> createCommandList(
+		const CommandListDescriptor& Desc = {}) = 0;
 	virtual RSwapchain* createSwapchain() = 0;
 	virtual RTexture* createTexture() = 0;
 	virtual std::shared_ptr<DeviceMemory> allocateMemory(
@@ -687,6 +895,8 @@ public:
 
 	virtual void waitIdle() = 0;
 	virtual void* getNativeHandle() const = 0;
+	[[nodiscard]] virtual const DeviceLimits& getLimits() const noexcept = 0;
+	[[nodiscard]] virtual const DeviceFeatures& getFeatures() const noexcept = 0;
 
 protected:
 	class IRHI* OnwerRHI = nullptr; 

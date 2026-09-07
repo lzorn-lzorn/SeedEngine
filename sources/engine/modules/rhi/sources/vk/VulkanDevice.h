@@ -51,8 +51,10 @@ struct QueueFamilyIndices {
 class VulkanDevice final : public RDevice
 {
 public:
-	VulkanDevice(vk::PhysicalDevice& RealGPU, vk::UniqueDevice& LogicalDevice)
-		: RealGPU(RealGPU), LogicalDevice(LogicalDevice) {}
+    VulkanDevice(
+        vk::PhysicalDevice& RealGPU,
+        vk::UniqueDevice& LogicalDevice,
+        uint32_t GraphicsQueueFamilyIndex);
 	
 	~VulkanDevice() = default;
 	
@@ -66,8 +68,8 @@ public:
 	RSampler* createSampler() override;
 	RShader* createShader() override;
 	RPipeline* createPipeline() override;
-	RRenderPass* createRenderPass() override;
-	RCommandList* createCommandList() override;
+    std::shared_ptr<RCommandList> createCommandList(
+        const CommandListDescriptor& Desc = {}) override;
 	RSwapchain* createSwapchain() override;
 	RTexture* createTexture() override;
     std::shared_ptr<DeviceMemory> allocateMemory(
@@ -77,9 +79,21 @@ public:
 
 	void waitIdle() override;
 	void* getNativeHandle() const override;
+    [[nodiscard]] const DeviceLimits& getLimits() const noexcept override { return Limits; }
+    [[nodiscard]] const DeviceFeatures& getFeatures() const noexcept override { return Features; }
+    [[nodiscard]] uint32_t getGraphicsQueueFamilyIndex() const noexcept
+    {
+        return GraphicsQueueFamilyIndex;
+    }
+    [[nodiscard]] vk::Queue getGraphicsQueue() const noexcept { return GraphicsQueue; }
 private:
 	vk::PhysicalDevice& RealGPU;
 	vk::UniqueDevice& LogicalDevice;
+    uint32_t GraphicsQueueFamilyIndex { 0 };
+    vk::Queue GraphicsQueue;
+    vk::QueueFlags QueueCapabilities;
+    DeviceLimits Limits;
+    DeviceFeatures Features;
 };
 
 } // namespace rhi

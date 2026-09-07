@@ -196,7 +196,7 @@ void VulkanRHI::createVkInstance()
         VK_MAKE_VERSION(1, 0, 0),
         "SeedEngine",
         VK_MAKE_VERSION(1, 0, 0),
-        VK_API_VERSION_1_3   // 请求 Vulkan 1.3, 驱动不支持时会回退
+        VK_API_VERSION_1_3
     );
 
     std::vector<const char*> layers;
@@ -283,6 +283,25 @@ void VulkanRHI::pickPhysicalDevice()
 
     for (const auto& device : physical_devices) 
 	{
+        if (device.getProperties().apiVersion < VK_API_VERSION_1_3)
+        {
+            std::println("Device {} does not support Vulkan 1.3, skipping.",
+                device.getProperties().deviceName);
+            continue;
+        }
+
+        vk::PhysicalDeviceVulkan13Features vulkan13_features;
+        vk::PhysicalDeviceFeatures2 feature_query;
+        feature_query.pNext = &vulkan13_features;
+        device.getFeatures2(&feature_query);
+        if (!vulkan13_features.dynamicRendering || !vulkan13_features.synchronization2)
+        {
+            std::println(
+                "Device {} lacks dynamic rendering or synchronization2, skipping.",
+                device.getProperties().deviceName);
+            continue;
+        }
+
         // ---- 检查核心特性 ----
         if (!checkDeviceFeatures(device, required_features)) 
 		{
@@ -355,6 +374,7 @@ void VulkanRHI::createLogicalDevice()
     {
 		throw std::runtime_error("No graphics queue family found.");
 	}
+    GraphicsQueueFamilyIndex = graphics_queue_family;
 
     // ---- 查找呈现队列族 ----
     uint32_t present_queue_family = UINT32_MAX;
@@ -386,6 +406,31 @@ void VulkanRHI::createLogicalDevice()
         queue_createInfos.push_back(queue_creation_info);
     }
 
+    vk::PhysicalDeviceVulkan13Features supported_vulkan13;
+    vk::PhysicalDeviceMultiviewFeatures supported_multiview;
+    vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures supported_separate_layouts;
+    supported_vulkan13.pNext = &supported_multiview;
+    supported_multiview.pNext = &supported_separate_layouts;
+    vk::PhysicalDeviceFeatures2 supported_features;
+    supported_features.pNext = &supported_vulkan13;
+    RealGPU.getFeatures2(&supported_features);
+    if (!supported_vulkan13.dynamicRendering || !supported_vulkan13.synchronization2)
+    {
+        throw std::runtime_error(
+            "Selected Vulkan device does not support dynamic rendering and synchronization2.");
+    }
+
+    vk::PhysicalDeviceVulkan13Features enabled_vulkan13;
+    enabled_vulkan13.dynamicRendering = VK_TRUE;
+    enabled_vulkan13.synchronization2 = VK_TRUE;
+    vk::PhysicalDeviceMultiviewFeatures enabled_multiview;
+    enabled_multiview.multiview = supported_multiview.multiview;
+    vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures enabled_separate_layouts;
+    enabled_separate_layouts.separateDepthStencilLayouts =
+        supported_separate_layouts.separateDepthStencilLayouts;
+    enabled_vulkan13.pNext = &enabled_multiview;
+    enabled_multiview.pNext = &enabled_separate_layouts;
+
     vk::PhysicalDeviceFeatures enabled_features{};
 
     // ---- 启用扩展(与之前检查对应) ----
@@ -402,6 +447,7 @@ void VulkanRHI::createLogicalDevice()
         enabledExtensions.empty() ? nullptr : enabledExtensions.data(),
         &enabled_features
     );
+	device_creation_info.pNext = &enabled_vulkan13;
 
     LogicalDevice = RealGPU.createDeviceUnique(device_creation_info);
 }
@@ -412,6 +458,9 @@ std::shared_ptr<RDevice> VulkanRHI::createDevice()
 	{
 		throw std::runtime_error("Logical device not created.");
 	}
-	return std::make_shared<VulkanDevice>(RealGPU, LogicalDevice);
+    return std::make_shared<VulkanDevice>(
+        RealGPU,
+        LogicalDevice,
+        GraphicsQueueFamilyIndex);
 }
 } // namespace rhi
