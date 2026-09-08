@@ -217,18 +217,205 @@ submit
 
 ### 5.4 动态状态
 
-动态状态是 Pipeline 契约，而不是调用提示。Pipeline 声明为动态的状态必须在 Draw 前初始化。当前支持：
+#### 5.4.1 定义和目的
 
-- Viewport；
-- Scissor；
-- Blend Constants；
-- Stencil Reference；
-- Depth Bias；
-- Line Width。
+Dynamic State 是在 Native Graphics Pipeline 创建时声明为“由命令提供”的状态。它把原本固化在 Pipeline 内的值移到 CommandList 记录阶段，从而允许多个 Draw 共享同一个 Pipeline。
 
-当前 Graphics Pipeline 描述符不保存静态 Viewport/Scissor，因此两者必须声明为动态。状态值可在同一 CommandList 中跨兼容 Pipeline 绑定继续有效，但每次 `reset()` 后必须重新设置。
+例如 Viewport 为静态状态时，改变窗口尺寸或相机 Viewport 可能需要创建新 Pipeline；Viewport 为动态状态时，只需要记录新的 `setViewports()`。
 
-Extended Dynamic State、Dynamic Vertex Input 尚未启用；请求这些状态会在 Pipeline 创建时明确失败，不能静默退化。
+动态状态主要解决两个问题：
+
+1. **减少 Pipeline 组合爆炸**：高频变化状态不再为每种取值生成独立 Pipeline；
+2. **提高命令记录灵活性**：同一 Pipeline 可用于不同 Viewport、Scissor、Stencil Reference 等 Draw。
+
+假设 Shader、附件格式、Blend、Depth 和 Rasterizer 都有多个组合，静态 Pipeline 数量近似为：
+
+$$
+N_{pipeline}=N_{shader}\times N_{format}\times N_{blend}\times N_{depth}\times N_{raster}\times N_{viewport}\times\cdots
+$$
+
+将高变化频率且后端支持良好的字段动态化，可以移除相应乘数。但动态状态不是越多越好：它可能需要扩展能力、增加 Command Buffer 大小、增加 Draw 前验证和状态排序成本，也可能削弱驱动提前优化的空间。
+
+#### 5.4.2 三类数据必须分开
+
+Dynamic State 设计中需要区分三种信息：
+
+| 信息 | 示例 | 存储位置 | 是否参与 Pipeline Key |
+|---|---|---|---|
+| 动态状态声明集合 | Viewport、Scissor 是动态的 | `GraphicsPipelineDescriptor::DynamicStates`、`RPipeline` | 是 |
+| 动态状态当前值 | 当前 Scissor 为某个矩形 | CommandList/Native Command Buffer | 否 |
+| 对应静态值 | 静态 Cull Mode 为 Back | Graphics Pipeline Descriptor | 仅该状态未动态化时参与 |
+
+动态状态的**声明集合**决定 Native Pipeline 的创建方式，因此必须进入 Pipeline Key。动态状态的**运行时值**属于命令流，不能进入 Pipeline Key。
+
+“动态状态不参与缓存键”的准确含义应是：某字段被声明为动态后，该字段的静态取值不参与语义键；不是指 `DynamicStates` 集合本身可以忽略。
+
+#### 5.4.3 Pipeline 与 CommandList 的契约
+
+Dynamic State 是 Pipeline 契约，不是可选提示：
+
+- Pipeline 创建时声明哪些状态由命令提供；
+- CommandList 在 Draw 前必须已经写入这些状态；
+- 如果 Pipeline 未声明某状态为动态，则对应 CommandList Setter 不能改变该 Pipeline 的静态值；
+- 请求后端未启用的动态状态时，Pipeline 创建必须失败，不能静默退化为静态状态；
+- 绑定新 Pipeline 不会自动生成缺失状态，也不应偷偷采用引擎默认值。
+
+当前 CommandList 使用 `InitializedDynamicStates` 记录本次 Recording 中已经设置过的状态。Draw 前计算：
+
+```text
+MissingStates = Pipeline.RequiredDynamicStates & ~CommandList.InitializedDynamicStates
+```
+
+只要 `MissingStates` 非空，Draw 就失败。该检查用于防止把 Vulkan 中未定义的动态状态值带入 Draw。
+
+#### 5.4.4 生命周期和继承规则
+
+当前语义如下：
+
+- `begin()` 开始一次新的记录，但状态集合在 CommandList `reset()` 时清空；
+- Setter 可以在绑定 Pipeline 之前调用，Vulkan 允许先设置状态再绑定 Pipeline；
+- 绑定另一个 Pipeline 不清空动态状态，已设置值可被后续 Pipeline 复用；
+- `beginRendering()` / `endRendering()` 当前不清空动态状态；
+- `reset()` 后所有动态状态都视为未初始化，必须重新设置；
+- 不同 CommandList 之间不继承任何动态状态；
+- Secondary CommandList 的状态继承尚未定义，不应依赖 Primary CommandList 中设置的值。
+
+“已初始化”只说明 CommandList 中曾记录对应 Setter，不表示该值对任何 Pipeline 都具有业务意义。例如动态 Depth Bias 已设置，但 Pipeline 的静态 `DepthBiasEnable` 为 false 时，该值不会产生栅格化效果。
+
+#### 5.4.5 当前枚举与实现状态
+
+公共 `EDynamicState_t` 为跨后端能力集合。当前状态如下：
+
+| RHI 状态 | 语义 | Vulkan 状态/命令 | 当前状态 |
+|---|---|---|---|
+| `Viewport` | NDC 到 Framebuffer 的变换范围 | `eViewport` / `vkCmdSetViewport` | 已实现 |
+| `Scissor` | Fragment 写入裁剪矩形 | `eScissor` / `vkCmdSetScissor` | 已实现 |
+| `BlendConstants` | Constant Color/Alpha Blend Factor 使用的常量 | `eBlendConstants` / `vkCmdSetBlendConstants` | 已实现 |
+| `StencilReference` | Front/Back Stencil Reference | `eStencilReference` / `vkCmdSetStencilReference` | 已实现 |
+| `DepthBias` | Constant/Clamp/Slope Depth Bias | `eDepthBias` / `vkCmdSetDepthBias` | 已实现 |
+| `LineWidth` | 光栅化线宽 | `eLineWidth` / `vkCmdSetLineWidth` | 已实现，宽线受 `WideLines` Feature 限制 |
+| `CullMode` | Front/Back/None Cull | Extended Dynamic State | 已建模，后端未启用 |
+| `FrontFace` | CW/CCW Front Face | Extended Dynamic State | 已建模，后端未启用 |
+| `PrimitiveTopology` | Point/Line/Triangle/Patch Topology | Extended Dynamic State | 已建模，后端未启用 |
+| `DepthTestEnable` | 是否执行深度测试 | Extended Dynamic State | 已建模，后端未启用 |
+| `DepthWriteEnable` | 是否写入深度 | Extended Dynamic State | 已建模，后端未启用 |
+| `DepthCompareOp` | 深度比较函数 | Extended Dynamic State | 已建模，后端未启用 |
+| `StencilTestEnable` | 是否执行模板测试 | Extended Dynamic State | 已建模，后端未启用 |
+| `StencilOperations` | Front/Back Stencil 操作和比较函数 | Extended Dynamic State | 已建模，后端未启用 |
+| `StencilCompareMask` | Stencil Compare Mask | 核心动态状态 | 已建模，尚无 Setter/映射 |
+| `StencilWriteMask` | Stencil Write Mask | 核心动态状态 | 已建模，尚无 Setter/映射 |
+| `VertexInput` | Binding/Attribute/Stride/Input Rate | `VK_EXT_vertex_input_dynamic_state` | 已建模，后端未启用 |
+
+Vulkan Pipeline 创建会遍历声明集合并转换为 `vk::PipelineDynamicStateCreateInfo`。当前转换函数只接受已实现的六个状态；其余状态会明确抛出“不支持”错误。
+
+#### 5.4.6 当前 Setter 语义
+
+##### Viewport
+
+`setViewports()` 验证：
+
+- 数组不能为空；
+- 数量不超过 `DeviceLimits::MaxViewports`；
+- Width/Height 大于 0；
+- 深度范围满足 $0\leq MinDepth\leq MaxDepth\leq1$。
+
+当前 Vulkan Graphics Pipeline 固定 `viewportCount = 1`，但公共 Setter 接受多个 Viewport。这是一个已知不一致：在支持 `VK_EXT_extended_dynamic_state` 的 `ViewportWithCount` 之前，当前后端应限制数量恰好为 1；否则 Pipeline 的静态 Count 与命令提供数量可能不匹配。
+
+后续应在以下两种模型中二选一：
+
+1. 基础模型：只支持一个动态 Viewport/Scissor，并在 Setter 中强制数量为 1；
+2. 扩展模型：增加 `ViewportWithCount` / `ScissorWithCount` 能力，Pipeline 不再固定 Count，并验证扩展 Feature。
+
+##### Scissor
+
+`setScissors()` 验证数组非空、数量不超过设备限制、Offset 非负且 Width/Height 非零。它与 Viewport 具有相同的 Count 一致性问题。
+
+Scissor 是增量 2D、UI Clip、Shadow Atlas 和局部后处理的重要状态。它只裁剪光栅化输出，不代表资源 Hazard，也不能替代 Render Graph 对脏区域资源依赖的管理。
+
+##### Blend Constants
+
+`setBlendConstants()` 提供四个浮点值。只有 Blend Factor 使用 Constant Color/Alpha 时才影响结果。即使业务上未使用常量，只要 Pipeline 声明了该动态状态，当前通用验证仍要求调用 Setter。
+
+后续可以选择继续保持“声明即必须初始化”的简单规则，或者由 Pipeline 规范化阶段判断 Blend State 是否实际消费该值并生成精确的 Required Dynamic State Mask。后一种方式更精确，但实现和跨后端规则更复杂。
+
+##### Stencil Reference
+
+`setStencilReference()` 分别记录 Front 和 Back Reference。Reference 只在 Stencil Test 有效时参与比较。当前将 Front/Back 合并成一个 RHI 动态状态位，因此 Setter 必须一次提供两面，避免只初始化一半。
+
+`StencilCompareMask` 和 `StencilWriteMask` 已存在枚举，但尚无对应 Setter。后续应增加成对的 Front/Back 参数，并和 `StencilOperations` 的动态化保持一致。
+
+##### Depth Bias
+
+`setDepthBias()` 提供：
+
+- Constant Factor；
+- Clamp；
+- Slope Factor。
+
+它常用于 Shadow Map、Decal 和 Coplanar Geometry。是否启用 Depth Bias 当前仍由静态 `RasterizerState::DepthBiasEnable` 决定；动态状态只控制数值。如果未来启用 Extended Dynamic State，应把 Enable 和数值是否分别动态化的语义建模清楚。
+
+##### Line Width
+
+`setLineWidth()` 要求 Width 大于 0。Width 不等于 1 时要求设备启用 `WideLines`。宽线在不同 GPU/后端上的支持和精度差异较大，跨平台渲染器不应把它作为通用几何方案；需要稳定粗线外观时优先生成三角形几何。
+
+#### 5.4.7 与 Pipeline Key 的关系
+
+构建 Key 时遵循：
+
+- `DynamicStates.Value` 始终参与 Key；
+- 某状态未动态化时，其静态值参与 Key；
+- 某状态动态化时，其静态占位值不参与 Key；
+- 与该状态正交的 Enable、Count 或其他字段仍应按真实语义参与 Key。
+
+示例：
+
+- `DepthBias` 动态化后，Constant/Clamp/Slope 不进入 Key；
+- 当前 `DepthBiasEnable` 仍是静态值，因此继续进入 Key；
+- `LineWidth` 动态化后，`RasterizerState::LineWidth` 不进入 Key；
+- `Viewport` 和 `Scissor` 的实际矩形从不进入 Key；
+- `PrimitiveTopology` 动态化后拓扑值不进入 Key，但 Primitive Restart 和 Patch Control Points 是否继续静态，需要按后端规则独立判断。
+
+不能直接哈希整个 Descriptor 结构体，因为动态字段需要按声明集合选择性排除，而且结构体可能含 Padding、无效字段或不稳定浮点表示。
+
+#### 5.4.8 与 Pipeline 切换和排序的关系
+
+动态状态减少 Pipeline 数量，但不会消除状态切换成本。上层 Renderer 仍应尽量按以下顺序组织 Draw：
+
+1. Rendering Signature / Pass；
+2. Pipeline；
+3. Bind Group/Material；
+4. Vertex/Index Buffer；
+5. Dynamic State；
+6. Draw。
+
+CommandList 后续可增加状态缓存，若新值与已记录值相同则跳过冗余 Setter。但缓存必须注意：
+
+- 浮点值应采用明确的位级或规范化比较；
+- Secondary CommandList 边界不能错误继承；
+- Debug/Validation 模式仍应保留调用语义；
+- 不要跨 Command Buffer 假定 Native 状态有效。
+
+#### 5.4.9 与 Dynamic Rendering 的关系
+
+Dynamic State 与 Dynamic Rendering 是两个独立概念：
+
+- Dynamic Rendering 移除持久 RenderPass/Framebuffer 依赖，描述本次实际附件；
+- Dynamic State 把部分 Graphics Pipeline 状态值移动到 CommandList。
+
+两者可以独立使用。`RenderingSignature` 仍参与 Pipeline 兼容性，Viewport/Scissor 等动态值不参与附件签名。
+
+#### 5.4.10 后续实现计划
+
+1. 修复 Viewport/Scissor Count：短期强制单个，或完整启用 WithCount 扩展；
+2. 查询并启用 Extended Dynamic State 1/2/3 与 Vertex Input Dynamic State Feature 链；
+3. 在 `DeviceFeatures` 中分别报告每类状态能力，而不是只有粗粒度布尔值；
+4. 为每个已开放枚举增加对应 CommandList Setter 和 Vulkan 映射；
+5. 明确 `PrimitiveTopology` 与 Primitive Restart/Patch Control Points 的动态组合约束；
+6. 增加 Front/Back Stencil Compare/Write Mask Setter；
+7. 将 Required Dynamic State Mask 与 Declared Dynamic State Mask 分开，按固定功能是否实际消费状态决定 Draw 前要求；
+8. 为动态状态值增加 CommandList 去重缓存和统计；
+9. 定义 Secondary CommandList 的继承和执行规则；
+10. 增加单元测试：缺失状态、Reset 后失效、跨 Pipeline 复用、不支持状态、宽线 Feature、Count 不匹配和缓存键排除规则。
 
 ### 5.5 Push Constant
 
@@ -355,7 +542,15 @@ Vulkan 当前只接受 SPIR-V：
 
 传统路径至少需要 Vertex Shader。Hull/Domain 必须成对出现并使用 Patch Topology。Task 只能与 Mesh 一起使用，Mesh 路径必须与传统 Vertex Input 路径互斥。
 
-当前 Vulkan 后端未启用 `VK_EXT_mesh_shader`，因此 Mesh/Task 会明确失败。Geometry、Tessellation、Wireframe、Wide Line、Depth Clamp、Depth Bounds、Sample Shading、Alpha To One 和 Independent Blend 会依据实际启用的设备 Feature 验证。
+Vulkan 后端将 `VK_EXT_mesh_shader` 作为可选扩展查询：扩展和 `meshShader` Feature 可用时启用 Mesh 路径，`taskShader` 独立报告。Mesh Pipeline 省略传统 Vertex Input、Input Assembly 和 Tessellation CreateInfo，并通过 `drawMeshTasks()` 记录命令；普通 `draw()` / `drawIndexed()` 与 Mesh Pipeline 不能混用。Geometry、Tessellation、Wireframe、Wide Line、Depth Clamp、Depth Bounds、Sample Shading、Alpha To One 和 Independent Blend 仍依据实际启用的设备 Feature 验证。
+
+Vulkan Shader Stage 临时数据采用显式两阶段模型：
+
+1. `StageStorage::collect()` 只收集并拥有 Shader、Specialization Map 和原始字节，不创建任何非 owning 指针；
+2. 最终 Stage 容器停止扩容后统一调用 `finalize()`，再绑定 `pName`、`pMapEntries`、`pData` 和 `pSpecializationInfo`；
+3. `getCreateInfo()` 拒绝读取未 finalize 的 Stage。
+
+因此新增 Stage 不再依赖脆弱的 `reserve(5)` 或移动后的手工指针修复。
 
 ### 7.5 Compute 与未来类型
 
@@ -378,7 +573,7 @@ Compute 使用独立 `ComputePipelineDescriptor`，只包含 Layout、Compute Sh
 ### 8.1 两层缓存
 
 1. `RPipelineCache`：后端/驱动缓存。Vulkan 对应 `VkPipelineCache`，可 Merge 和 Serialize。
-2. `PipelineManager`：引擎语义缓存，负责完整 Key、并发去重、异步编译、失败缓存、热重载和预热。
+2. `PipelineManager`：引擎语义缓存，当前负责完整 Key、并发去重、有界异步编译、异常传播、清理代际和统计；失败缓存、热重载和预热属于后续功能。
 
 `RPipelineCache` 不是 Pipeline 对象缓存，也不能替代 `PipelineManager`。
 
@@ -648,18 +843,24 @@ RHI Target 在模块 CMake 中把这些选项转换为值为 0/1 的私有 Compi
 
 ### P1：PipelineManager
 
-**缺失内容**：完整语义键、跨帧对象缓存、异步去重、超时、失败分类、热重载和预热。
+**已实现内容**：
+
+- Graphics/Compute Descriptor 完整字节键和完整键相等比较，哈希仅用于加速查找；
+- Layout 暴露规范化兼容键，不再只依赖 64 位兼容哈希；
+- 固定数量 `std::jthread` Worker 和有界线程数任务队列；
+- 相同 Key 的同步/异步请求共享 `std::shared_future`；
+- 驱动编译不持有缓存锁，异步异常通过 Future 传播；
+- Manager 共享持有 Device，并提供 `clear()` 代际隔离和命中/未命中/编译中统计。
+
+**仍缺失内容**：等待超时、持久失败分类/退避、Shader Generation 热重载、预热清单和缓存容量/淘汰策略。
 
 **实现建议**：
 
-1. 定义可比较的规范化 `GraphicsPipelineKey` / `ComputePipelineKey`；
-2. 用 Hash + 完整键比较消除碰撞；
-3. 缓存状态至少包含 Compiling、Ready、Failed；
-4. 相同 Key 请求共享 Future；
-5. 超时只终止等待，不取消驱动编译；
-6. 失败缓存绑定 Shader/Device Generation；
-7. 提供 Warmup Manifest 和磁盘 Driver Cache；
-8. 热重载在安全帧边界替换 Handle。
+1. 增加带 Shader/Device Generation 的 Failed 状态和可配置重试退避；
+2. 超时只终止调用方等待，不取消驱动编译；
+3. 提供 Warmup Manifest、容量预算/LRU 和磁盘 Driver Cache；
+4. 热重载在安全帧边界替换 Handle；
+5. 为重复请求、失败重试、`clear()` 与析构竞态增加并发测试。
 
 **验收条件**：多线程重复请求只创建一次，Shader 修改后旧 Pipeline 持续可用并最终安全替换。
 
@@ -692,13 +893,13 @@ RHI Target 在模块 CMake 中把这些选项转换为值为 0/1 的私有 Compi
 5. 明确 Present ↔ RenderTarget Barrier；
 6. 禁止依赖交换链内容持久性实现增量渲染。
 
-### P2：扩展动态状态、Mesh Shader 与 Ray Tracing
+### P2：扩展动态状态、Mesh Shader 完善与 Ray Tracing
 
 **实现建议**：
 
 - 查询并按需启用 Extended Dynamic State 1/2/3 和 Vertex Input Dynamic State；
 - 只在 Feature/Extension 可用时开放对应命令；
-- Mesh/Task 路径使用独立验证，禁止同时提供传统 Vertex Shader/Input；
+- 为已实现的 Mesh/Task 路径补充功能设备集成测试、极限查询和 Render-to-Image 验证；
 - Ray Tracing 使用独立 Pipeline Descriptor、SBT Builder 和 `traceRays()`；
 - 所有可选路径进入 Device Feature、Pipeline Key 和测试矩阵。
 

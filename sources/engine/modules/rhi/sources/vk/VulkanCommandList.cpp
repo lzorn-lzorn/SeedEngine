@@ -590,6 +590,8 @@ void VulkanCommandList::draw(
 	requireRecording("draw");
 	requireInsideRendering("draw");
 	validateGraphicsPipeline();
+	if (BoundGraphicsPipeline->usesMeshShaders())
+		throw std::logic_error("A mesh graphics pipeline requires drawMeshTasks.");
 	if (VertexCount == 0 || InstanceCount == 0)
 		return;
 	CommandBuffer->draw(VertexCount, InstanceCount, FirstVertex, FirstInstance);
@@ -605,9 +607,36 @@ void VulkanCommandList::drawIndexed(
 	requireRecording("drawIndexed");
 	requireInsideRendering("drawIndexed");
 	validateGraphicsPipeline();
+	if (BoundGraphicsPipeline->usesMeshShaders())
+		throw std::logic_error("A mesh graphics pipeline requires drawMeshTasks.");
 	if (IndexCount == 0 || InstanceCount == 0)
 		return;
 	CommandBuffer->drawIndexed(IndexCount, InstanceCount, FirstIndex, VertexOffset, FirstInstance);
+}
+
+void VulkanCommandList::drawMeshTasks(
+	uint32_t GroupCountX,
+	uint32_t GroupCountY,
+	uint32_t GroupCountZ)
+{
+	requireRecording("drawMeshTasks");
+	requireInsideRendering("drawMeshTasks");
+	validateGraphicsPipeline();
+	if (!BoundGraphicsPipeline->usesMeshShaders())
+		throw std::logic_error("drawMeshTasks requires a mesh graphics pipeline.");
+	if (!Device->getFeatures().MeshShader)
+		throw std::logic_error("Mesh shaders are not enabled on this device.");
+	if (GroupCountX == 0 || GroupCountY == 0 || GroupCountZ == 0)
+		return;
+	const auto draw_mesh_tasks = reinterpret_cast<PFN_vkCmdDrawMeshTasksEXT>(
+		Device->getVkDevice().getProcAddr("vkCmdDrawMeshTasksEXT"));
+	if (!draw_mesh_tasks)
+		throw std::runtime_error("vkCmdDrawMeshTasksEXT is unavailable on the logical device.");
+	draw_mesh_tasks(
+		static_cast<VkCommandBuffer>(CommandBuffer.get()),
+		GroupCountX,
+		GroupCountY,
+		GroupCountZ);
 }
 
 void VulkanCommandList::dispatch(

@@ -5,6 +5,8 @@
 #include "VulkanDeviceMemory.h"
 #include "VulkanImageView.h"
 #include "VulkanPipeline.hpp"
+#include <algorithm>
+#include <cstring>
 #include <stdexcept>
 
 namespace rhi
@@ -37,8 +39,19 @@ VulkanDevice::VulkanDevice(
 	vk::PhysicalDeviceVulkan13Features vulkan13_features;
 	vk::PhysicalDeviceMultiviewFeatures multiview_features;
 	vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures separate_layout_features;
+	vk::PhysicalDeviceMeshShaderFeaturesEXT mesh_shader_features;
+	const auto available_extensions = RealGPU.enumerateDeviceExtensionProperties();
+	const bool has_mesh_shader_extension = std::ranges::any_of(
+		available_extensions,
+		[](const vk::ExtensionProperties& extension)
+		{
+			return std::strcmp(
+				extension.extensionName.data(),
+				VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0;
+		});
 	vulkan13_features.pNext = &multiview_features;
 	multiview_features.pNext = &separate_layout_features;
+	separate_layout_features.pNext = has_mesh_shader_extension ? &mesh_shader_features : nullptr;
 	vk::PhysicalDeviceFeatures2 features;
 	features.pNext = &vulkan13_features;
 	RealGPU.getFeatures2(&features);
@@ -55,6 +68,8 @@ VulkanDevice::VulkanDevice(
 	Features.SampleRateShading = features.features.sampleRateShading == VK_TRUE;
 	Features.AlphaToOne = features.features.alphaToOne == VK_TRUE;
 	Features.IndependentBlend = features.features.independentBlend == VK_TRUE;
+	Features.MeshShader = has_mesh_shader_extension && mesh_shader_features.meshShader == VK_TRUE;
+	Features.TaskShader = Features.MeshShader && mesh_shader_features.taskShader == VK_TRUE;
 }
 
 namespace

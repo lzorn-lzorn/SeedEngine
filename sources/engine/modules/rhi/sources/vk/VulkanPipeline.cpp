@@ -34,6 +34,14 @@ void hashValue(uint64_t& InOutHash, const ValueType& Value)
 	hashBytes(InOutHash, &Value, sizeof(Value));
 }
 
+template <typename ValueType>
+void appendKey(std::vector<std::byte>& InOutKey, const ValueType& Value)
+{
+	static_assert(std::is_trivially_copyable_v<ValueType>);
+	const auto* begin = reinterpret_cast<const std::byte*>(&Value);
+	InOutKey.insert(InOutKey.end(), begin, begin + sizeof(Value));
+}
+
 uint64_t calculateShaderHash(const ShaderDescriptor& Desc)
 {
 	uint64_t hash = HashOffset;
@@ -163,48 +171,100 @@ vk::DynamicState toVk(EDynamicState_t State)
 	}
 }
 
+// StageStorage 是 Vulkan Pipeline 创建期间使用的临时所有权容器
+// 如果只返回一个 vk::PipelineShaderStageCreateInfo, 那么特化常量对应的数组和字节数据可能已经在函数返回时被销毁, 使其中指针悬空
 struct StageStorage
 {
+	/**
+	* Shader 中: [[vk::constant_id(0)]] const uint SampleCount = 4;
+	*            [[vk::constant_id(1)]] const float Exposure = 1.0;
+	* vk::SpecializationMapEntry {
+	*     constantID, -> 0 -> 1
+	*     offset,     -> 0 -> 4
+	*     size        -> 4 -> 4
+	* }
+	*/
 	std::vector<vk::SpecializationMapEntry> MapEntries;
+	/**
+	* 所有 Specialization Constant 原始值拼接后的连续字节数组
+	* [SampleCount 的 4 字节][Exposure 的 4 字节]
+	*/
 	std::vector<std::byte> Data;
+
+	/**
+	 *	Specialization Constant 与 Push Constant 不同：
+	 *	- Specialization Constant 在 Pipeline 创建阶段确定，可能参与驱动优化；
+	 *	- Push Constant 在 命令记录阶段更新；
+	 *	- Specialization Constant 的变化通常会产生不同 Pipeline；
+	 *	- Push Constant 的值不产生新 Pipeline。
+	 *
+	 *  vk::SpecializationInfo 本身是 Vulkan 对特化常量的整体描述
+    */
 	vk::SpecializationInfo SpecializationInfo;
 	vk::PipelineShaderStageCreateInfo CreateInfo;
-};
+	std::shared_ptr<VulkanShader> Shader;
+	EShaderStage_t Stage { EShaderStage_t::Vertex };
+	bool Finalized { false };
 
-StageStorage createStageStorage(
-	const PipelineShaderStage& Stage,
-	EShaderStage_t ExpectedStage,
-	VulkanDevice& Device)
-{
-	auto shader = std::dynamic_pointer_cast<VulkanShader>(Stage.Shader);
-	if (!shader || &shader->getDevice() != &Device)
-		throw std::invalid_argument("Pipeline shader belongs to another backend or device.");
-	if (shader->getStage() != ExpectedStage)
-		throw std::invalid_argument("Pipeline shader stage does not match its descriptor slot.");
-
-	StageStorage result;
-	std::unordered_set<uint32_t> ids;
-	for (const auto& constant : Stage.SpecializationConstants)
+	/** 第一阶段只收集并拥有数据，不创建任何指向成员的 Vulkan 指针视图。 */
+	static StageStorage collect(
+		const PipelineShaderStage& InStage,
+		EShaderStage_t ExpectedStage,
+		VulkanDevice& Device)
 	{
-		if (constant.Data.empty() || !ids.emplace(constant.Id).second)
-			throw std::invalid_argument("Specialization constants require unique ids and non-empty data.");
-		const uint32_t offset = static_cast<uint32_t>(result.Data.size());
-		result.Data.insert(result.Data.end(), constant.Data.begin(), constant.Data.end());
-		result.MapEntries.emplace_back(constant.Id, offset, constant.Data.size());
+		auto shader = std::dynamic_pointer_cast<VulkanShader>(InStage.Shader);
+		if (!shader || &shader->getDevice() != &Device)
+			throw std::invalid_argument("Pipeline shader belongs to another backend or device.");
+		const bool task_alias = ExpectedStage == EShaderStage_t::Task &&
+			shader->getStage() == EShaderStage_t::Amplification;
+		if (shader->getStage() != ExpectedStage && !task_alias)
+			throw std::invalid_argument("Pipeline shader stage does not match its descriptor slot.");
+
+		StageStorage result;
+		result.Shader = std::move(shader);
+		result.Stage = ExpectedStage;
+		std::unordered_set<uint32_t> ids;
+		for (const auto& constant : InStage.SpecializationConstants)
+		{
+			if (constant.Data.empty() || !ids.emplace(constant.Id).second)
+				throw std::invalid_argument(
+					"Specialization constants require unique ids and non-empty data.");
+			const uint32_t offset = static_cast<uint32_t>(result.Data.size());
+			result.Data.insert(result.Data.end(), constant.Data.begin(), constant.Data.end());
+			result.MapEntries.emplace_back(constant.Id, offset, constant.Data.size());
+		}
+		return result;
 	}
-	result.SpecializationInfo = vk::SpecializationInfo(
-		static_cast<uint32_t>(result.MapEntries.size()),
-		result.MapEntries.data(),
-		result.Data.size(),
-		result.Data.data());
-	result.CreateInfo = vk::PipelineShaderStageCreateInfo(
-		{},
-		toVk(ExpectedStage),
-		shader->getVkShaderModule(),
-		shader->getEntryPoint().c_str(),
-		Stage.SpecializationConstants.empty() ? nullptr : &result.SpecializationInfo);
-	return result;
-}
+
+	/**
+	 * 第二阶段只能在最终容器完成扩容后执行。此时才绑定指向 owning 成员的
+	 * pMapEntries、pData、pName 和 pSpecializationInfo。
+	 */
+	void finalize()
+	{
+		if (!Shader)
+			throw std::logic_error("Cannot finalize an empty shader stage.");
+		SpecializationInfo = vk::SpecializationInfo(
+			static_cast<uint32_t>(MapEntries.size()),
+			MapEntries.data(),
+			Data.size(),
+			Data.data());
+		CreateInfo = vk::PipelineShaderStageCreateInfo(
+			{},
+			toVk(Stage),
+			Shader->getVkShaderModule(),
+			Shader->getEntryPoint().c_str(),
+			MapEntries.empty() ? nullptr : &SpecializationInfo);
+		Finalized = true;
+	}
+
+	[[nodiscard]] const vk::PipelineShaderStageCreateInfo& getCreateInfo() const
+	{
+		if (!Finalized)
+			throw std::logic_error("Shader stage storage must be finalized before use.");
+		return CreateInfo;
+	}
+};
 
 void validateRenderingSignature(const RenderingSignature& Signature, const DeviceLimits& Limits)
 {
@@ -269,12 +329,20 @@ uint64_t calculateGraphicsPipelineHash(const GraphicsPipelineDescriptor& Desc)
 	uint64_t hash = HashOffset;
 	const uint64_t layout_hash = Desc.Layout->getCompatibilityHash();
 	hashValue(hash, layout_hash);
-	for (const PipelineShaderStage* stage : {
-		&Desc.Vertex, &Desc.Pixel, &Desc.Geometry, &Desc.Hull,
-		&Desc.Domain, &Desc.Task, &Desc.Mesh })
+	for (const auto& [stage, expected_stage] : std::array {
+		std::pair { &Desc.Vertex, EShaderStage_t::Vertex },
+		std::pair { &Desc.Pixel, EShaderStage_t::Pixel },
+		std::pair { &Desc.Geometry, EShaderStage_t::Geometry },
+		std::pair { &Desc.Hull, EShaderStage_t::Hull },
+		std::pair { &Desc.Domain, EShaderStage_t::Domain },
+		std::pair { &Desc.Task, EShaderStage_t::Task },
+		std::pair { &Desc.Mesh, EShaderStage_t::Mesh } })
 	{
 		const uint64_t shader_hash = stage->Shader ? stage->Shader->getContentHash() : 0;
 		hashValue(hash, shader_hash);
+		hashValue(hash, expected_stage);
+		if (stage->Shader)
+			hashBytes(hash, stage->Shader->getEntryPoint().data(), stage->Shader->getEntryPoint().size());
 		auto constants = stage->SpecializationConstants;
 		std::ranges::sort(constants, {}, &SpecializationConstant::Id);
 		for (const auto& constant : constants)
@@ -384,6 +452,11 @@ uint64_t calculateComputePipelineHash(const ComputePipelineDescriptor& Desc)
 	const uint64_t shader_hash = Desc.Compute.Shader->getContentHash();
 	hashValue(hash, layout_hash);
 	hashValue(hash, shader_hash);
+	hashValue(hash, EShaderStage_t::Compute);
+	hashBytes(
+		hash,
+		Desc.Compute.Shader->getEntryPoint().data(),
+		Desc.Compute.Shader->getEntryPoint().size());
 	auto constants = Desc.Compute.SpecializationConstants;
 	std::ranges::sort(constants, {}, &SpecializationConstant::Id);
 	for (const auto& constant : constants)
@@ -392,6 +465,236 @@ uint64_t calculateComputePipelineHash(const ComputePipelineDescriptor& Desc)
 		hashBytes(hash, constant.Data.data(), constant.Data.size());
 	}
 	return hash;
+}
+
+struct GraphicsPipelineBuildState
+{
+	std::vector<StageStorage> StageStorageList;
+	std::vector<vk::PipelineShaderStageCreateInfo> ShaderStages;
+	std::vector<vk::VertexInputBindingDescription> VertexBindings;
+	std::vector<vk::VertexInputAttributeDescription> VertexAttributes;
+	vk::PipelineVertexInputStateCreateInfo VertexInput;
+	vk::PipelineInputAssemblyStateCreateInfo InputAssembly;
+	vk::PipelineTessellationStateCreateInfo Tessellation;
+	vk::PipelineViewportStateCreateInfo Viewport;
+	vk::PipelineRasterizationStateCreateInfo Rasterizer;
+	std::array<vk::SampleMask, 2> SampleMask {};
+	vk::PipelineMultisampleStateCreateInfo Multisample;
+	vk::PipelineDepthStencilStateCreateInfo DepthStencil;
+	std::vector<vk::PipelineColorBlendAttachmentState> BlendAttachments;
+	vk::PipelineColorBlendStateCreateInfo ColorBlend;
+	std::vector<vk::DynamicState> DynamicStates;
+	vk::PipelineDynamicStateCreateInfo DynamicState;
+	std::array<vk::Format, MaxColorAttachments> ColorFormats {};
+	vk::PipelineRenderingCreateInfo Rendering;
+};
+
+void validateGraphicsPipelineDescriptor(
+	const GraphicsPipelineDescriptor& Desc,
+	VulkanDevice& Device)
+{
+	validateRenderingSignature(Desc.Rendering, Device.getLimits());
+	const bool mesh_path = static_cast<bool>(Desc.Mesh.Shader);
+	const bool vertex_path = static_cast<bool>(Desc.Vertex.Shader);
+	if (mesh_path == vertex_path)
+		throw std::invalid_argument("Graphics pipeline requires exactly one vertex or mesh shader path.");
+	if (Desc.Task.Shader && !mesh_path)
+		throw std::invalid_argument("Task shader requires a mesh shader.");
+	if (mesh_path && (Desc.Geometry.Shader || Desc.Hull.Shader || Desc.Domain.Shader))
+		throw std::invalid_argument("Mesh shader path cannot use geometry or tessellation shaders.");
+	if (mesh_path && (!Desc.VertexInput.Buffers.empty() || !Desc.VertexInput.Attributes.empty()))
+		throw std::invalid_argument("Mesh shader path cannot use traditional vertex input.");
+	if (mesh_path && !Device.getFeatures().MeshShader)
+		throw std::invalid_argument("Mesh shaders are unsupported by this device.");
+	if (Desc.Task.Shader && !Device.getFeatures().TaskShader)
+		throw std::invalid_argument("Task shaders are unsupported by this device.");
+	if (!Desc.Pixel.Shader && Desc.Rendering.ColorAttachmentCount != 0)
+		throw std::invalid_argument("Graphics pipeline with color attachments requires a pixel shader.");
+	if ((Desc.Hull.Shader == nullptr) != (Desc.Domain.Shader == nullptr))
+		throw std::invalid_argument("Hull and domain shaders must be provided together.");
+	if (Desc.Geometry.Shader && !Device.getFeatures().GeometryShader)
+		throw std::invalid_argument("Geometry shaders are unsupported by this device.");
+	if (Desc.Hull.Shader && !Device.getFeatures().TessellationShader)
+		throw std::invalid_argument("Tessellation shaders are unsupported by this device.");
+	if (!mesh_path && Desc.InputAssembly.Topology == EPrimitiveTopology::PatchList && !Desc.Hull.Shader)
+		throw std::invalid_argument("Patch topology requires hull and domain shaders.");
+	if (!mesh_path && Desc.InputAssembly.Topology != EPrimitiveTopology::PatchList && Desc.Hull.Shader)
+		throw std::invalid_argument("Tessellation shaders require patch topology.");
+	if (Desc.Hull.Shader && Desc.InputAssembly.PatchControlPoints == 0)
+		throw std::invalid_argument("Tessellation pipeline requires patch control points.");
+	if (Desc.Rendering.ViewMask != 0 && !Device.getFeatures().Multiview)
+		throw std::invalid_argument("Multiview graphics pipeline is unsupported by this device.");
+	if (!Desc.DynamicStates.has(EDynamicState_t::Viewport) ||
+		!Desc.DynamicStates.has(EDynamicState_t::Scissor))
+	{
+		throw std::invalid_argument(
+			"Viewport and scissor must be dynamic because the descriptor contains no static values.");
+	}
+	if ((Desc.DepthStencil.DepthTestEnable || Desc.DepthStencil.DepthWriteEnable) &&
+		Desc.Rendering.DepthFormat == EFormat::Undefined)
+		throw std::invalid_argument("Depth testing or writing requires a depth attachment format.");
+	if (Desc.Rasterizer.FillMode != EFillMode::Solid && !Device.getFeatures().FillModeNonSolid)
+		throw std::invalid_argument("Non-solid rasterization is unsupported by this device.");
+	if (Desc.Rasterizer.DepthClampEnable && !Device.getFeatures().DepthClamp)
+		throw std::invalid_argument("Depth clamp is unsupported by this device.");
+	if (Desc.DepthStencil.DepthBoundsTestEnable && !Device.getFeatures().DepthBounds)
+		throw std::invalid_argument("Depth bounds testing is unsupported by this device.");
+	if (Desc.Multisample.SampleShadingEnable && !Device.getFeatures().SampleRateShading)
+		throw std::invalid_argument("Sample-rate shading is unsupported by this device.");
+	if (Desc.Multisample.AlphaToOneEnable && !Device.getFeatures().AlphaToOne)
+		throw std::invalid_argument("Alpha-to-one is unsupported by this device.");
+	if (!Desc.DynamicStates.has(EDynamicState_t::LineWidth) &&
+		Desc.Rasterizer.LineWidth != 1.0f && !Device.getFeatures().WideLines)
+		throw std::invalid_argument("Wide lines are unsupported by this device.");
+	if (!Device.getFeatures().IndependentBlend && Desc.Rendering.ColorAttachmentCount > 1)
+	{
+		const auto& first = Desc.Blend.Attachments[0];
+		for (uint32_t index = 1; index < Desc.Rendering.ColorAttachmentCount; ++index)
+			if (first != Desc.Blend.Attachments[index])
+				throw std::invalid_argument("Independent attachment blending is unsupported by this device.");
+	}
+#if !RHI_ENABLE_PIPELINE_STATISTICS
+	if (Desc.Compile.Flags.has(EPipelineCompileFlag_t::CaptureStatistics))
+		throw std::invalid_argument("Pipeline statistics were disabled at build time.");
+#endif
+}
+
+void buildShaderStages(
+	const GraphicsPipelineDescriptor& Desc,
+	VulkanDevice& Device,
+	GraphicsPipelineBuildState& OutState)
+{
+	const std::array stages {
+		std::pair { &Desc.Vertex, EShaderStage_t::Vertex },
+		std::pair { &Desc.Pixel, EShaderStage_t::Pixel },
+		std::pair { &Desc.Geometry, EShaderStage_t::Geometry },
+		std::pair { &Desc.Hull, EShaderStage_t::Hull },
+		std::pair { &Desc.Domain, EShaderStage_t::Domain },
+		std::pair { &Desc.Task, EShaderStage_t::Task },
+		std::pair { &Desc.Mesh, EShaderStage_t::Mesh }
+	};
+	const size_t stage_count = std::ranges::count_if(stages, [](const auto& stage)
+	{
+		return static_cast<bool>(stage.first->Shader);
+	});
+	OutState.StageStorageList.reserve(stage_count);
+	for (const auto& [stage, expected_stage] : stages)
+		if (stage->Shader)
+			OutState.StageStorageList.emplace_back(
+				StageStorage::collect(*stage, expected_stage, Device));
+
+	// StageStorageList 的容量从此不再变化，finalize() 建立的所有内部指针保持稳定。
+	OutState.ShaderStages.reserve(stage_count);
+	for (auto& storage : OutState.StageStorageList)
+	{
+		storage.finalize();
+		OutState.ShaderStages.emplace_back(storage.getCreateInfo());
+	}
+}
+
+void buildVertexInputState(
+	const GraphicsPipelineDescriptor& Desc,
+	VulkanDevice& Device,
+	GraphicsPipelineBuildState& OutState)
+{
+	if (Desc.Mesh.Shader)
+		return;
+	if (Desc.VertexInput.Buffers.size() > Device.getLimits().MaxVertexInputBindings ||
+		Desc.VertexInput.Attributes.size() > Device.getLimits().MaxVertexInputAttributes)
+		throw std::invalid_argument("Vertex input exceeds device limits.");
+	std::unordered_set<uint32_t> bindings;
+	for (const auto& binding : Desc.VertexInput.Buffers)
+	{
+		if (binding.Stride == 0 || !bindings.emplace(binding.Binding).second)
+			throw std::invalid_argument(
+				"Vertex bindings require a non-zero stride and unique binding index.");
+		OutState.VertexBindings.emplace_back(binding.Binding, binding.Stride, toVk(binding.InputRate));
+	}
+	std::unordered_set<uint32_t> locations;
+	for (const auto& attribute : Desc.VertexInput.Attributes)
+	{
+		if (!bindings.contains(attribute.Binding) || !locations.emplace(attribute.Location).second)
+			throw std::invalid_argument(
+				"Vertex attributes require an existing binding and unique location.");
+		OutState.VertexAttributes.emplace_back(
+			attribute.Location, attribute.Binding, toVk(attribute.Format), attribute.Offset);
+	}
+	OutState.VertexInput = vk::PipelineVertexInputStateCreateInfo(
+		{}, OutState.VertexBindings, OutState.VertexAttributes);
+	OutState.InputAssembly = vk::PipelineInputAssemblyStateCreateInfo(
+		{}, toVk(Desc.InputAssembly.Topology), Desc.InputAssembly.PrimitiveRestartEnable);
+	OutState.Tessellation = vk::PipelineTessellationStateCreateInfo(
+		{}, Desc.InputAssembly.PatchControlPoints);
+}
+
+void buildFixedFunctionState(
+	const GraphicsPipelineDescriptor& Desc,
+	GraphicsPipelineBuildState& OutState)
+{
+	OutState.Viewport = vk::PipelineViewportStateCreateInfo({}, 1, nullptr, 1, nullptr);
+	OutState.Rasterizer = vk::PipelineRasterizationStateCreateInfo(
+		{}, Desc.Rasterizer.DepthClampEnable, Desc.Rasterizer.RasterizerDiscardEnable,
+		toVk(Desc.Rasterizer.FillMode), toVk(Desc.Rasterizer.CullMode),
+		toVk(Desc.Rasterizer.FrontFace), Desc.Rasterizer.DepthBiasEnable,
+		Desc.Rasterizer.DepthBiasConstantFactor, Desc.Rasterizer.DepthBiasClamp,
+		Desc.Rasterizer.DepthBiasSlopeFactor, Desc.Rasterizer.LineWidth);
+	OutState.SampleMask = {
+		static_cast<vk::SampleMask>(Desc.Multisample.SampleMask),
+		static_cast<vk::SampleMask>(Desc.Multisample.SampleMask >> 32)
+	};
+	OutState.Multisample = vk::PipelineMultisampleStateCreateInfo(
+		{}, toVk(Desc.Rendering.SampleCount), Desc.Multisample.SampleShadingEnable,
+		Desc.Multisample.MinSampleShading, OutState.SampleMask.data(),
+		Desc.Multisample.AlphaToCoverageEnable, Desc.Multisample.AlphaToOneEnable);
+	OutState.DepthStencil = vk::PipelineDepthStencilStateCreateInfo(
+		{}, Desc.DepthStencil.DepthTestEnable, Desc.DepthStencil.DepthWriteEnable,
+		toVk(Desc.DepthStencil.DepthCompareOp), Desc.DepthStencil.DepthBoundsTestEnable,
+		Desc.DepthStencil.StencilTestEnable, toVk(Desc.DepthStencil.Front),
+		toVk(Desc.DepthStencil.Back), Desc.DepthStencil.MinDepthBounds,
+		Desc.DepthStencil.MaxDepthBounds);
+	OutState.BlendAttachments.reserve(Desc.Rendering.ColorAttachmentCount);
+	for (uint32_t index = 0; index < Desc.Rendering.ColorAttachmentCount; ++index)
+	{
+		const auto& state = Desc.Blend.Attachments[index];
+		OutState.BlendAttachments.emplace_back(
+			state.BlendEnable, toVk(state.Color.SrcFactor), toVk(state.Color.DstFactor),
+			toVk(state.Color.Operation), toVk(state.Alpha.SrcFactor),
+			toVk(state.Alpha.DstFactor), toVk(state.Alpha.Operation), toVk(state.WriteMask));
+	}
+	OutState.ColorBlend = vk::PipelineColorBlendStateCreateInfo(
+		{}, false, vk::LogicOp::eCopy, OutState.BlendAttachments);
+}
+
+void buildDynamicState(
+	const GraphicsPipelineDescriptor& Desc,
+	GraphicsPipelineBuildState& OutState)
+{
+	constexpr std::array candidates {
+		EDynamicState_t::Viewport, EDynamicState_t::Scissor,
+		EDynamicState_t::BlendConstants, EDynamicState_t::StencilReference,
+		EDynamicState_t::DepthBias, EDynamicState_t::LineWidth,
+		EDynamicState_t::CullMode, EDynamicState_t::FrontFace,
+		EDynamicState_t::PrimitiveTopology, EDynamicState_t::DepthTestEnable,
+		EDynamicState_t::DepthWriteEnable, EDynamicState_t::DepthCompareOp,
+		EDynamicState_t::StencilTestEnable, EDynamicState_t::StencilOperations,
+		EDynamicState_t::StencilCompareMask, EDynamicState_t::StencilWriteMask,
+		EDynamicState_t::VertexInput
+	};
+	for (const auto state : candidates)
+		if (Desc.DynamicStates.has(state)) OutState.DynamicStates.emplace_back(toVk(state));
+	OutState.DynamicState = vk::PipelineDynamicStateCreateInfo({}, OutState.DynamicStates);
+}
+
+void buildRenderingState(
+	const GraphicsPipelineDescriptor& Desc,
+	GraphicsPipelineBuildState& OutState)
+{
+	for (uint32_t index = 0; index < Desc.Rendering.ColorAttachmentCount; ++index)
+		OutState.ColorFormats[index] = toVk(Desc.Rendering.ColorFormats[index]);
+	OutState.Rendering = vk::PipelineRenderingCreateInfo(
+		Desc.Rendering.ViewMask, Desc.Rendering.ColorAttachmentCount,
+		OutState.ColorFormats.data(), toVk(Desc.Rendering.DepthFormat),
+		toVk(Desc.Rendering.StencilFormat));
 }
 
 } // namespace
@@ -450,6 +753,10 @@ VulkanBindGroupLayout::VulkanBindGroupLayout(
 		hashValue(CompatibilityHash, entry.Type);
 		hashValue(CompatibilityHash, entry.ArrayCount);
 		hashValue(CompatibilityHash, entry.Visibility.Value);
+		appendKey(CompatibilityKey, entry.Binding);
+		appendKey(CompatibilityKey, entry.Type);
+		appendKey(CompatibilityKey, entry.ArrayCount);
+		appendKey(CompatibilityKey, entry.Visibility.Value);
 	}
 	DescriptorSetLayout = Device->getVkDevice().createDescriptorSetLayoutUnique(
 		vk::DescriptorSetLayoutCreateInfo({}, bindings));
@@ -475,6 +782,8 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 	std::vector<vk::DescriptorSetLayout> layouts;
 	layouts.reserve(BindGroupLayouts.size());
 	CompatibilityHash = HashOffset;
+	const uint64_t layout_count = BindGroupLayouts.size();
+	appendKey(CompatibilityKey, layout_count);
 	for (const auto& layout : BindGroupLayouts)
 	{
 		auto* vk_layout = dynamic_cast<VulkanBindGroupLayout*>(layout.get());
@@ -483,10 +792,16 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 		layouts.emplace_back(vk_layout->getVkDescriptorSetLayout());
 		const uint64_t layout_hash = vk_layout->getCompatibilityHash();
 		hashValue(CompatibilityHash, layout_hash);
+		const auto layout_key = vk_layout->getCompatibilityKey();
+		const uint64_t layout_key_size = layout_key.size();
+		appendKey(CompatibilityKey, layout_key_size);
+		CompatibilityKey.insert(CompatibilityKey.end(), layout_key.begin(), layout_key.end());
 	}
 
 	std::vector<PushConstantRange> ranges = Desc.PushConstantRanges;
 	std::ranges::sort(ranges, {}, &PushConstantRange::Offset);
+	const uint64_t range_count = ranges.size();
+	appendKey(CompatibilityKey, range_count);
 	std::vector<vk::PushConstantRange> vk_ranges;
 	vk_ranges.reserve(ranges.size());
 	uint32_t previous_end = 0;
@@ -503,6 +818,9 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 		hashValue(CompatibilityHash, range.Stages.Value);
 		hashValue(CompatibilityHash, range.Offset);
 		hashValue(CompatibilityHash, range.Size);
+		appendKey(CompatibilityKey, range.Stages.Value);
+		appendKey(CompatibilityKey, range.Offset);
+		appendKey(CompatibilityKey, range.Size);
 	}
 	PipelineLayout = Device->getVkDevice().createPipelineLayoutUnique(
 		vk::PipelineLayoutCreateInfo({}, layouts, vk_ranges));
@@ -582,6 +900,7 @@ VulkanPipeline::VulkanPipeline(
 	std::shared_ptr<RPipelineLayout> InLayout,
 	RenderingSignature InRendering,
 	EDynamicStates InDynamicStates,
+	bool InUsesMeshShaders,
 	uint64_t InCacheKey,
 	std::string InDebugName,
 	vk::UniquePipeline InPipeline)
@@ -590,6 +909,7 @@ VulkanPipeline::VulkanPipeline(
 	, Layout(std::move(InLayout))
 	, Rendering(InRendering)
 	, DynamicStates(InDynamicStates)
+	, UsesMeshShaders(InUsesMeshShaders)
 	, CacheKey(InCacheKey)
 	, DebugName(std::move(InDebugName))
 	, Pipeline(std::move(InPipeline))
@@ -607,223 +927,28 @@ std::shared_ptr<RPipeline> createVulkanGraphicsPipeline(
 	const GraphicsPipelineDescriptor& Desc)
 {
 	auto& layout = requireLayout(Desc.Layout, Device);
-	validateRenderingSignature(Desc.Rendering, Device.getLimits());
-	if (!Desc.Vertex.Shader && !Desc.Mesh.Shader)
-		throw std::invalid_argument("Graphics pipeline requires a vertex or mesh shader.");
-	if (!Desc.Pixel.Shader && Desc.Rendering.ColorAttachmentCount != 0)
-		throw std::invalid_argument("Graphics pipeline with color attachments requires a pixel shader.");
-	if (Desc.Mesh.Shader || Desc.Task.Shader)
-		throw std::invalid_argument("Mesh shaders require optional Vulkan feature integration that is not enabled.");
-	if ((Desc.Hull.Shader == nullptr) != (Desc.Domain.Shader == nullptr))
-		throw std::invalid_argument("Hull and domain shaders must be provided together.");
-	if (Desc.Geometry.Shader && !Device.getFeatures().GeometryShader)
-		throw std::invalid_argument("Geometry shaders are unsupported by this device.");
-	if (Desc.Hull.Shader && !Device.getFeatures().TessellationShader)
-		throw std::invalid_argument("Tessellation shaders are unsupported by this device.");
-	if (Desc.InputAssembly.Topology == EPrimitiveTopology::PatchList && !Desc.Hull.Shader)
-		throw std::invalid_argument("Patch topology requires hull and domain shaders.");
-	if (Desc.InputAssembly.Topology != EPrimitiveTopology::PatchList && Desc.Hull.Shader)
-		throw std::invalid_argument("Tessellation shaders require patch topology.");
-	if (Desc.Rendering.ViewMask != 0 && !Device.getFeatures().Multiview)
-		throw std::invalid_argument("Multiview graphics pipeline is unsupported by this device.");
-	if (!Desc.DynamicStates.has(EDynamicState_t::Viewport) ||
-		!Desc.DynamicStates.has(EDynamicState_t::Scissor))
-	{
-		throw std::invalid_argument(
-			"Viewport and scissor must be dynamic because the descriptor contains no static values.");
-	}
-	if ((Desc.DepthStencil.DepthTestEnable || Desc.DepthStencil.DepthWriteEnable) &&
-		Desc.Rendering.DepthFormat == EFormat::Undefined)
-	{
-		throw std::invalid_argument("Depth testing or writing requires a depth attachment format.");
-	}
-	if (Desc.Rasterizer.FillMode != EFillMode::Solid && !Device.getFeatures().FillModeNonSolid)
-		throw std::invalid_argument("Non-solid rasterization is unsupported by this device.");
-	if (Desc.Rasterizer.DepthClampEnable && !Device.getFeatures().DepthClamp)
-		throw std::invalid_argument("Depth clamp is unsupported by this device.");
-	if (Desc.DepthStencil.DepthBoundsTestEnable && !Device.getFeatures().DepthBounds)
-		throw std::invalid_argument("Depth bounds testing is unsupported by this device.");
-	if (Desc.Multisample.SampleShadingEnable && !Device.getFeatures().SampleRateShading)
-		throw std::invalid_argument("Sample-rate shading is unsupported by this device.");
-	if (Desc.Multisample.AlphaToOneEnable && !Device.getFeatures().AlphaToOne)
-		throw std::invalid_argument("Alpha-to-one is unsupported by this device.");
-	if (!Desc.DynamicStates.has(EDynamicState_t::LineWidth) &&
-		Desc.Rasterizer.LineWidth != 1.0f && !Device.getFeatures().WideLines)
-	{
-		throw std::invalid_argument("Wide lines are unsupported by this device.");
-	}
-	if (!Device.getFeatures().IndependentBlend && Desc.Rendering.ColorAttachmentCount > 1)
-	{
-		const auto& first = Desc.Blend.Attachments[0];
-		for (uint32_t index = 1; index < Desc.Rendering.ColorAttachmentCount; ++index)
-		{
-			if (first != Desc.Blend.Attachments[index])
-				throw std::invalid_argument("Independent attachment blending is unsupported by this device.");
-		}
-	}
-#if !RHI_ENABLE_PIPELINE_STATISTICS
-	if (Desc.Compile.Flags.has(EPipelineCompileFlag_t::CaptureStatistics))
-		throw std::invalid_argument("Pipeline statistics were disabled at build time.");
-#endif
-
-	std::vector<StageStorage> stage_storage;
-	stage_storage.reserve(5);
-	auto add_stage = [&](const PipelineShaderStage& stage, EShaderStage_t expected)
-	{
-		if (stage.Shader)
-			stage_storage.emplace_back(createStageStorage(stage, expected, Device));
-	};
-	add_stage(Desc.Vertex, EShaderStage_t::Vertex);
-	add_stage(Desc.Pixel, EShaderStage_t::Pixel);
-	add_stage(Desc.Geometry, EShaderStage_t::Geometry);
-	add_stage(Desc.Hull, EShaderStage_t::Hull);
-	add_stage(Desc.Domain, EShaderStage_t::Domain);
-	std::vector<vk::PipelineShaderStageCreateInfo> stages;
-	stages.reserve(stage_storage.size());
-	for (auto& stage : stage_storage)
-	{
-		if (!stage.MapEntries.empty())
-		{
-			stage.SpecializationInfo.setMapEntries(stage.MapEntries)
-				.setDataSize(stage.Data.size())
-				.setPData(stage.Data.data());
-			stage.CreateInfo.setPSpecializationInfo(&stage.SpecializationInfo);
-		}
-		stages.emplace_back(stage.CreateInfo);
-	}
-
-	if (Desc.VertexInput.Buffers.size() > Device.getLimits().MaxVertexInputBindings ||
-		Desc.VertexInput.Attributes.size() > Device.getLimits().MaxVertexInputAttributes)
-	{
-		throw std::invalid_argument("Vertex input exceeds device limits.");
-	}
-	std::unordered_set<uint32_t> bindings;
-	std::vector<vk::VertexInputBindingDescription> vertex_bindings;
-	for (const auto& binding : Desc.VertexInput.Buffers)
-	{
-		if (binding.Stride == 0 || !bindings.emplace(binding.Binding).second)
-			throw std::invalid_argument("Vertex bindings require a non-zero stride and unique binding index.");
-		vertex_bindings.emplace_back(binding.Binding, binding.Stride, toVk(binding.InputRate));
-	}
-	std::unordered_set<uint32_t> locations;
-	std::vector<vk::VertexInputAttributeDescription> attributes;
-	for (const auto& attribute : Desc.VertexInput.Attributes)
-	{
-		if (!bindings.contains(attribute.Binding) || !locations.emplace(attribute.Location).second)
-			throw std::invalid_argument("Vertex attributes require an existing binding and unique location.");
-		attributes.emplace_back(attribute.Location, attribute.Binding, toVk(attribute.Format), attribute.Offset);
-	}
-	vk::PipelineVertexInputStateCreateInfo vertex_input({}, vertex_bindings, attributes);
-	vk::PipelineInputAssemblyStateCreateInfo input_assembly(
-		{}, toVk(Desc.InputAssembly.Topology), Desc.InputAssembly.PrimitiveRestartEnable);
-	vk::PipelineTessellationStateCreateInfo tessellation(
-		{}, Desc.InputAssembly.PatchControlPoints);
-	if (Desc.Hull.Shader && Desc.InputAssembly.PatchControlPoints == 0)
-		throw std::invalid_argument("Tessellation pipeline requires patch control points.");
-
-	vk::PipelineViewportStateCreateInfo viewport({}, 1, nullptr, 1, nullptr);
-	vk::PipelineRasterizationStateCreateInfo rasterizer(
-		{},
-		Desc.Rasterizer.DepthClampEnable,
-		Desc.Rasterizer.RasterizerDiscardEnable,
-		toVk(Desc.Rasterizer.FillMode),
-		toVk(Desc.Rasterizer.CullMode),
-		toVk(Desc.Rasterizer.FrontFace),
-		Desc.Rasterizer.DepthBiasEnable,
-		Desc.Rasterizer.DepthBiasConstantFactor,
-		Desc.Rasterizer.DepthBiasClamp,
-		Desc.Rasterizer.DepthBiasSlopeFactor,
-		Desc.Rasterizer.LineWidth);
-	const std::array<vk::SampleMask, 2> sample_mask {
-		static_cast<vk::SampleMask>(Desc.Multisample.SampleMask),
-		static_cast<vk::SampleMask>(Desc.Multisample.SampleMask >> 32)
-	};
-	vk::PipelineMultisampleStateCreateInfo multisample(
-		{},
-		toVk(Desc.Rendering.SampleCount),
-		Desc.Multisample.SampleShadingEnable,
-		Desc.Multisample.MinSampleShading,
-		sample_mask.data(),
-		Desc.Multisample.AlphaToCoverageEnable,
-		Desc.Multisample.AlphaToOneEnable);
-	vk::PipelineDepthStencilStateCreateInfo depth_stencil(
-		{},
-		Desc.DepthStencil.DepthTestEnable,
-		Desc.DepthStencil.DepthWriteEnable,
-		toVk(Desc.DepthStencil.DepthCompareOp),
-		Desc.DepthStencil.DepthBoundsTestEnable,
-		Desc.DepthStencil.StencilTestEnable,
-		toVk(Desc.DepthStencil.Front),
-		toVk(Desc.DepthStencil.Back),
-		Desc.DepthStencil.MinDepthBounds,
-		Desc.DepthStencil.MaxDepthBounds);
-
-	std::vector<vk::PipelineColorBlendAttachmentState> blend_attachments;
-	blend_attachments.reserve(Desc.Rendering.ColorAttachmentCount);
-	for (uint32_t index = 0; index < Desc.Rendering.ColorAttachmentCount; ++index)
-	{
-		const auto& state = Desc.Blend.Attachments[index];
-		blend_attachments.emplace_back(
-			state.BlendEnable,
-			toVk(state.Color.SrcFactor),
-			toVk(state.Color.DstFactor),
-			toVk(state.Color.Operation),
-			toVk(state.Alpha.SrcFactor),
-			toVk(state.Alpha.DstFactor),
-			toVk(state.Alpha.Operation),
-			toVk(state.WriteMask));
-	}
-	vk::PipelineColorBlendStateCreateInfo color_blend(
-		{}, false, vk::LogicOp::eCopy, blend_attachments);
-
-	constexpr std::array dynamic_candidates {
-		EDynamicState_t::Viewport,
-		EDynamicState_t::Scissor,
-		EDynamicState_t::BlendConstants,
-		EDynamicState_t::StencilReference,
-		EDynamicState_t::DepthBias,
-		EDynamicState_t::LineWidth,
-		EDynamicState_t::CullMode,
-		EDynamicState_t::FrontFace,
-		EDynamicState_t::PrimitiveTopology,
-		EDynamicState_t::DepthTestEnable,
-		EDynamicState_t::DepthWriteEnable,
-		EDynamicState_t::DepthCompareOp,
-		EDynamicState_t::StencilTestEnable,
-		EDynamicState_t::StencilOperations,
-		EDynamicState_t::StencilCompareMask,
-		EDynamicState_t::StencilWriteMask,
-		EDynamicState_t::VertexInput
-	};
-	std::vector<vk::DynamicState> dynamic_states;
-	for (const auto state : dynamic_candidates)
-		if (Desc.DynamicStates.has(state)) dynamic_states.emplace_back(toVk(state));
-	vk::PipelineDynamicStateCreateInfo dynamic_state({}, dynamic_states);
-
-	std::array<vk::Format, MaxColorAttachments> color_formats;
-	for (uint32_t index = 0; index < Desc.Rendering.ColorAttachmentCount; ++index)
-		color_formats[index] = toVk(Desc.Rendering.ColorFormats[index]);
-	vk::PipelineRenderingCreateInfo rendering(
-		Desc.Rendering.ViewMask,
-		Desc.Rendering.ColorAttachmentCount,
-		color_formats.data(),
-		toVk(Desc.Rendering.DepthFormat),
-		toVk(Desc.Rendering.StencilFormat));
+	validateGraphicsPipelineDescriptor(Desc, Device);
+	GraphicsPipelineBuildState state;
+	buildShaderStages(Desc, Device, state);
+	buildVertexInputState(Desc, Device, state);
+	buildFixedFunctionState(Desc, state);
+	buildDynamicState(Desc, state);
+	buildRenderingState(Desc, state);
 
 	vk::GraphicsPipelineCreateInfo create_info;
 	create_info.setFlags(getPipelineFlags(Desc.Compile.Flags))
-		.setStages(stages)
-		.setPVertexInputState(&vertex_input)
-		.setPInputAssemblyState(&input_assembly)
-		.setPTessellationState(Desc.Hull.Shader ? &tessellation : nullptr)
-		.setPViewportState(&viewport)
-		.setPRasterizationState(&rasterizer)
-		.setPMultisampleState(&multisample)
-		.setPDepthStencilState(&depth_stencil)
-		.setPColorBlendState(&color_blend)
-		.setPDynamicState(&dynamic_state)
+		.setStages(state.ShaderStages)
+		.setPVertexInputState(Desc.Mesh.Shader ? nullptr : &state.VertexInput)
+		.setPInputAssemblyState(Desc.Mesh.Shader ? nullptr : &state.InputAssembly)
+		.setPTessellationState(Desc.Hull.Shader ? &state.Tessellation : nullptr)
+		.setPViewportState(&state.Viewport)
+		.setPRasterizationState(&state.Rasterizer)
+		.setPMultisampleState(&state.Multisample)
+		.setPDepthStencilState(&state.DepthStencil)
+		.setPColorBlendState(&state.ColorBlend)
+		.setPDynamicState(&state.DynamicState)
 		.setLayout(layout.getVkPipelineLayout())
-		.setPNext(&rendering);
+		.setPNext(&state.Rendering);
 
 	auto* cache = getCache(Desc.Compile.Cache, Device);
 	std::unique_lock<std::mutex> cache_lock;
@@ -836,6 +961,7 @@ std::shared_ptr<RPipeline> createVulkanGraphicsPipeline(
 		Desc.Layout,
 		Desc.Rendering,
 		Desc.DynamicStates,
+		static_cast<bool>(Desc.Mesh.Shader),
 		calculateGraphicsPipelineHash(Desc),
 		Desc.DebugName,
 		std::move(pipeline_result.value));
@@ -852,16 +978,10 @@ std::shared_ptr<RPipeline> createVulkanComputePipeline(
 	if (Desc.Compile.Flags.has(EPipelineCompileFlag_t::CaptureStatistics))
 		throw std::invalid_argument("Pipeline statistics were disabled at build time.");
 #endif
-	StageStorage stage = createStageStorage(Desc.Compute, EShaderStage_t::Compute, Device);
-	if (!stage.MapEntries.empty())
-	{
-		stage.SpecializationInfo.setMapEntries(stage.MapEntries)
-			.setDataSize(stage.Data.size())
-			.setPData(stage.Data.data());
-		stage.CreateInfo.setPSpecializationInfo(&stage.SpecializationInfo);
-	}
+	StageStorage stage = StageStorage::collect(Desc.Compute, EShaderStage_t::Compute, Device);
+	stage.finalize();
 	vk::ComputePipelineCreateInfo create_info(
-		getPipelineFlags(Desc.Compile.Flags), stage.CreateInfo, layout.getVkPipelineLayout());
+		getPipelineFlags(Desc.Compile.Flags), stage.getCreateInfo(), layout.getVkPipelineLayout());
 	auto* cache = getCache(Desc.Compile.Cache, Device);
 	std::unique_lock<std::mutex> cache_lock;
 	if (cache) cache_lock = std::unique_lock(cache->getMutex());
@@ -873,6 +993,7 @@ std::shared_ptr<RPipeline> createVulkanComputePipeline(
 		Desc.Layout,
 		RenderingSignature {},
 		EDynamicStates {},
+		false,
 		calculateComputePipelineHash(Desc),
 		Desc.DebugName,
 		std::move(pipeline_result.value));

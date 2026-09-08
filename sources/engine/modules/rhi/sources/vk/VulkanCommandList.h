@@ -66,6 +66,10 @@ public:
 		uint32_t FirstIndex,
 		int32_t VertexOffset,
 		uint32_t FirstInstance) override;
+	void drawMeshTasks(
+		uint32_t GroupCountX,
+		uint32_t GroupCountY,
+		uint32_t GroupCountZ) override;
 	void dispatch(
 		uint32_t GroupCountX,
 		uint32_t GroupCountY,

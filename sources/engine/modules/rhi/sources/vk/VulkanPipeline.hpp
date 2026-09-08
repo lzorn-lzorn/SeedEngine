@@ -44,6 +44,10 @@ public:
 
 	[[nodiscard]] RDevice& getDevice() const noexcept override;
 	[[nodiscard]] uint64_t getCompatibilityHash() const noexcept override { return CompatibilityHash; }
+	[[nodiscard]] std::span<const std::byte> getCompatibilityKey() const noexcept override
+	{
+		return CompatibilityKey;
+	}
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(DescriptorSetLayout); }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
 	[[nodiscard]] vk::DescriptorSetLayout getVkDescriptorSetLayout() const noexcept
@@ -54,6 +58,7 @@ public:
 private:
 	VulkanDevice* Device { nullptr };
 	uint64_t CompatibilityHash { 0 };
+	std::vector<std::byte> CompatibilityKey;
 	std::string DebugName;
 	vk::UniqueDescriptorSetLayout DescriptorSetLayout;
 };
@@ -66,6 +71,10 @@ public:
 
 	[[nodiscard]] RDevice& getDevice() const noexcept override;
 	[[nodiscard]] uint64_t getCompatibilityHash() const noexcept override { return CompatibilityHash; }
+	[[nodiscard]] std::span<const std::byte> getCompatibilityKey() const noexcept override
+	{
+		return CompatibilityKey;
+	}
 	[[nodiscard]] bool supportsPushConstants(
 		EShaderStage Stages,
 		uint32_t Offset,
@@ -77,6 +86,7 @@ public:
 private:
 	VulkanDevice* Device { nullptr };
 	uint64_t CompatibilityHash { 0 };
+	std::vector<std::byte> CompatibilityKey;
 	std::string DebugName;
 	std::vector<std::shared_ptr<RBindGroupLayout>> BindGroupLayouts;
 	std::vector<PushConstantRange> PushConstantRanges;
@@ -114,6 +124,7 @@ public:
 		std::shared_ptr<RPipelineLayout> Layout,
 		RenderingSignature Rendering,
 		EDynamicStates DynamicStates,
+		bool UsesMeshShaders,
 		uint64_t CacheKey,
 		std::string DebugName,
 		vk::UniquePipeline Pipeline);
@@ -130,6 +141,7 @@ public:
 		return Type == EPipelineType::Graphics ? &Rendering : nullptr;
 	}
 	[[nodiscard]] EDynamicStates getDynamicStates() const noexcept override { return DynamicStates; }
+	[[nodiscard]] bool usesMeshShaders() const noexcept override { return UsesMeshShaders; }
 	[[nodiscard]] uint64_t getCacheKey() const noexcept override { return CacheKey; }
 	[[nodiscard]] const std::string& getDebugName() const noexcept override { return DebugName; }
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(Pipeline); }
@@ -142,6 +154,7 @@ private:
 	std::shared_ptr<RPipelineLayout> Layout;
 	RenderingSignature Rendering {};
 	EDynamicStates DynamicStates {};
+	bool UsesMeshShaders { false };
 	uint64_t CacheKey { 0 };
 	std::string DebugName;
 	vk::UniquePipeline Pipeline;

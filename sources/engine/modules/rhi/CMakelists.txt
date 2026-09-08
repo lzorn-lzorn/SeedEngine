@@ -16,6 +16,7 @@ if(TRUE)
         set(GRAPHICS_API_VULKAN TRUE)
         file(GLOB_RECURSE SOURCES_LIST CONFIGURE_DEPENDS
 			${CMAKE_CURRENT_SOURCE_DIR}/sources/RHIServer.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/sources/PipelineManager.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.hpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.h

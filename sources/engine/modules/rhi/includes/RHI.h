@@ -615,6 +615,7 @@ struct DeviceFeatures
 	bool ExtendedDynamicState3 { false };
 	bool DynamicVertexInput { false };
 	bool MeshShader { false };
+	bool TaskShader { false };
 	bool RayTracingPipeline { false };
 	bool PipelineExecutableProperties { false };
 };
@@ -853,6 +854,11 @@ struct ShaderDescriptor
 	uint64_t ContentHash { 0 };
 };
 
+/**
+ * @note RShader 表示一个已经编译的 Shader Module.
+ * @note 其不包含 Rasterizer State, Render Target Format, Vertex Input, Depth/Stencil
+ * @note 同一个 Vertex RShader 也可以参与多个 Pipeline
+ */
 class RShader
 {
 public:
@@ -897,6 +903,7 @@ public:
 
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
 	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
+	[[nodiscard]] virtual std::span<const std::byte> getCompatibilityKey() const noexcept = 0;
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
@@ -920,6 +927,21 @@ struct PipelineLayoutDescriptor
 	std::string DebugName;
 };
 
+/**
+ * @brief 描述 Shader 可以访问的资源接口: 例如
+ *  Set 0:
+ *    Binding 0 = Camera Uniform Buffer
+ *    Binding 1 = Scene Storage Buffer
+ *
+ *  Set 1:
+ *    Binding 0 = Material Texture
+ *    Binding 1 = Material Sampler
+ *
+ *  Push Constants:
+ *    Offset 0, Size 64, Vertex|Pixel
+ *
+ * 其本质上是资源的ABI, 创建 Pipeline 后不能改变 ABI; 相同规范化 Layout 应复用; 未来必须与 Shader Reflection 对照
+ */
 class RPipelineLayout
 {
 public:
@@ -929,6 +951,7 @@ public:
 
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
 	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
+	[[nodiscard]] virtual std::span<const std::byte> getCompatibilityKey() const noexcept = 0;
 	[[nodiscard]] virtual bool supportsPushConstants(
 		EShaderStage Stages,
 		uint32_t Offset,
@@ -1096,7 +1119,7 @@ struct ComputePipelineDescriptor
 };
 
 /**
- * @brief 后端 Pipeline 二进制缓存。
+ * @brief 后端 Pipeline 二进制缓存, 用于加速编译.
  *
  * serialize() 返回的字节只保证可交给同一 RHI 版本、后端、设备和兼容驱动。
  * 磁盘层仍必须附加并校验 RHI/Schema/设备/驱动版本头。
@@ -1130,6 +1153,7 @@ public:
 	[[nodiscard]] virtual const std::shared_ptr<RPipelineLayout>& getLayout() const noexcept = 0;
 	[[nodiscard]] virtual const RenderingSignature* getRenderingSignature() const noexcept = 0;
 	[[nodiscard]] virtual EDynamicStates getDynamicStates() const noexcept = 0;
+	[[nodiscard]] virtual bool usesMeshShaders() const noexcept = 0;
 	[[nodiscard]] virtual uint64_t getCacheKey() const noexcept = 0;
 	[[nodiscard]] virtual const std::string& getDebugName() const noexcept = 0;
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
@@ -1183,6 +1207,10 @@ public:
 		uint32_t FirstIndex = 0,
 		int32_t VertexOffset = 0,
 		uint32_t FirstInstance = 0) = 0;
+	virtual void drawMeshTasks(
+		uint32_t GroupCountX,
+		uint32_t GroupCountY,
+		uint32_t GroupCountZ) = 0;
 	virtual void dispatch(
 		uint32_t GroupCountX,
 		uint32_t GroupCountY,

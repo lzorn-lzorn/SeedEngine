@@ -406,11 +406,25 @@ void VulkanRHI::createLogicalDevice()
         queue_createInfos.push_back(queue_creation_info);
     }
 
+    const auto available_extensions = RealGPU.enumerateDeviceExtensionProperties();
+    const bool mesh_shader_extension_available = std::ranges::any_of(
+        available_extensions,
+        [](const vk::ExtensionProperties& extension)
+        {
+            return std::strcmp(
+                extension.extensionName.data(),
+                VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0;
+        });
+
     vk::PhysicalDeviceVulkan13Features supported_vulkan13;
     vk::PhysicalDeviceMultiviewFeatures supported_multiview;
     vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures supported_separate_layouts;
+    vk::PhysicalDeviceMeshShaderFeaturesEXT supported_mesh_shader;
     supported_vulkan13.pNext = &supported_multiview;
     supported_multiview.pNext = &supported_separate_layouts;
+    supported_separate_layouts.pNext = mesh_shader_extension_available
+        ? &supported_mesh_shader
+        : nullptr;
     vk::PhysicalDeviceFeatures2 supported_features;
     supported_features.pNext = &supported_vulkan13;
     RealGPU.getFeatures2(&supported_features);
@@ -430,6 +444,16 @@ void VulkanRHI::createLogicalDevice()
         supported_separate_layouts.separateDepthStencilLayouts;
     enabled_vulkan13.pNext = &enabled_multiview;
     enabled_multiview.pNext = &enabled_separate_layouts;
+    vk::PhysicalDeviceMeshShaderFeaturesEXT enabled_mesh_shader;
+    enabled_mesh_shader.meshShader = mesh_shader_extension_available
+        ? supported_mesh_shader.meshShader
+        : VK_FALSE;
+    enabled_mesh_shader.taskShader = mesh_shader_extension_available
+        ? supported_mesh_shader.taskShader
+        : VK_FALSE;
+    enabled_separate_layouts.pNext = enabled_mesh_shader.meshShader
+        ? &enabled_mesh_shader
+        : nullptr;
 
     // Pipeline 后端只在对应能力实际启用后对外报告支持。这里按硬件支持启用
     // 常用固定功能；扩展动态状态、Mesh 和 Ray Tracing 仍由后续扩展链单独管理。
@@ -447,6 +471,8 @@ void VulkanRHI::createLogicalDevice()
     // ---- 启用扩展(与之前检查对应) ----
     std::vector<const char*> enabledExtensions;
     enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    if (enabled_mesh_shader.meshShader)
+        enabledExtensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
 
     vk::DeviceCreateInfo device_creation_info(
         vk::DeviceCreateFlags(),
