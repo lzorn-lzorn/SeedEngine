@@ -50,7 +50,6 @@ endif()
 
 target_link_libraries(${TARGET_NAME} PRIVATE 
 	Module::Application 
-	Module::RHI
 	Core::Core
 	Runtime::Runtime
 )

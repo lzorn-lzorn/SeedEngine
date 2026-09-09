@@ -7,6 +7,7 @@
 
 namespace rhi
 {
+class VulkanDescriptorAllocator;
 struct QueueFamilyIndices {
     std::optional<uint32_t> GraphicsFamily;
     std::optional<uint32_t> PresentFamily;
@@ -56,19 +57,21 @@ public:
         vk::UniqueDevice& LogicalDevice,
         uint32_t GraphicsQueueFamilyIndex);
 	
-	~VulkanDevice() = default;
+    ~VulkanDevice() override;
 	
     uint32_t findMemoryType(uint32_t TypeBits, vk::MemoryPropertyFlags Properties);
     vk::PhysicalDevice& getVkPhysicalDevice() { return RealGPU; }
     vk::Device& getVkDevice() { return LogicalDevice.get(); }
 public:
-	RBuffer* createBuffer() override;
-	RImage* createImage() override;
+    std::shared_ptr<RBuffer> createBuffer(const BufferDescriptor& Desc) override;
+    std::shared_ptr<RImage> createImage(const RImage::Descriptor_t& Desc) override;
     std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) override;
-	RSampler* createSampler() override;
+    std::shared_ptr<RSampler> createSampler(const SamplerDescriptor& Desc = {}) override;
     std::shared_ptr<RShader> createShader(const ShaderDescriptor& Desc) override;
     std::shared_ptr<RBindGroupLayout> createBindGroupLayout(
         const BindGroupLayoutDescriptor& Desc) override;
+    std::shared_ptr<RBindGroup> createBindGroup(
+        const BindGroupDescriptor& Desc) override;
     std::shared_ptr<RPipelineLayout> createPipelineLayout(
         const PipelineLayoutDescriptor& Desc) override;
     std::shared_ptr<RPipelineCache> createPipelineCache(
@@ -103,6 +106,7 @@ private:
     vk::QueueFlags QueueCapabilities;
     DeviceLimits Limits;
     DeviceFeatures Features;
+    std::shared_ptr<VulkanDescriptorAllocator> DescriptorAllocator;
 };
 
 } // namespace rhi

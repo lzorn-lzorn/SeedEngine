@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 #include <core/wrappers/Flag.hpp>
 #include <core/math/MathCommon.hpp>
@@ -165,6 +166,8 @@ enum class EBufferUsage_t : uint32_t
 	Indirect    = 1 << 4,
 	TransferSrc = 1 << 5,
 	TransferDst = 1 << 6,
+	UniformTexel = 1 << 7,
+	StorageTexel = 1 << 8,
 };
 
 using EBufferUsage = core::wrappers::Flags<EBufferUsage_t>;
@@ -344,15 +347,49 @@ enum class EPrimitiveTopology
 enum class EDescriptorType
 {
 	UniformBuffer,
-	DynamicUniformBuffer,
-	StorageBuffer,
 	ReadOnlyStorageBuffer,
-	DynamicStorageBuffer,
+	ReadWriteStorageBuffer,
 	Sampler,
+	ComparisonSampler,
 	SampledTexture,
 	StorageTexture,
+	UniformTexelBuffer,
+	StorageTexelBuffer,
 	CombinedImageSampler,
+	InputAttachment,
 	AccelerationStructure
+};
+
+enum class EDescriptorBindingFlag_t : uint8_t
+{
+	None = 0,
+	DynamicOffset = 1 << 0,
+	PartiallyBound = 1 << 1,
+	UpdateAfterBind = 1 << 2,
+	VariableArrayCount = 1 << 3
+};
+
+using EDescriptorBindingFlags = core::wrappers::Flags<EDescriptorBindingFlag_t>;
+
+enum class EDescriptorImageLayout : uint8_t
+{
+	ShaderReadOnly,
+	General,
+	DepthStencilReadOnly
+};
+
+enum class EFilterMode : uint8_t
+{
+	Nearest,
+	Linear
+};
+
+enum class ESamplerAddressMode : uint8_t
+{
+	Repeat,
+	MirroredRepeat,
+	ClampToEdge,
+	ClampToBorder
 };
 
 enum class EBlendFactor
@@ -521,12 +558,14 @@ class RPipeline;
 class RPipelineCache;
 class RPipelineLayout;
 class RBindGroupLayout;
+class RBindGroup;
 class RDevice;
 class RCommandList;
 class DeviceMemoryAllocator;
 class RTexture;
 class RImageView;
 class DeviceMemory;
+class RAccelerationStructure;
 struct MemoryRequirements;
 
 inline constexpr uint32_t MaxColorAttachments = 8;
@@ -593,6 +632,9 @@ struct DeviceLimits
 	uint32_t MaxVertexInputAttributes { 1 };
 	uint32_t MaxPushConstantSize { 0 };
 	uint32_t MaxBoundBindGroups { 0 };
+	uint64_t MinUniformBufferOffsetAlignment { 1 };
+	uint64_t MinStorageBufferOffsetAlignment { 1 };
+	uint64_t MinTexelBufferOffsetAlignment { 1 };
 };
 
 struct DeviceFeatures
@@ -608,12 +650,18 @@ struct DeviceFeatures
 	bool DepthClamp { false };
 	bool DepthBounds { false };
 	bool SampleRateShading { false };
+	bool SamplerAnisotropy { false };
 	bool AlphaToOne { false };
 	bool IndependentBlend { false };
 	bool ExtendedDynamicState { false };
 	bool ExtendedDynamicState2 { false };
 	bool ExtendedDynamicState3 { false };
 	bool DynamicVertexInput { false };
+	bool DescriptorIndexing { false };
+	bool RuntimeDescriptorArray { false };
+	bool PartiallyBoundDescriptors { false };
+	bool VariableDescriptorCount { false };
+	bool UpdateAfterBind { false };
 	bool MeshShader { false };
 	bool TaskShader { false };
 	bool RayTracingPipeline { false };
@@ -674,6 +722,75 @@ public:
 	virtual void freeMemory(std::shared_ptr<DeviceMemory> Memory) = 0;
 };
 
+/** @brief GPU Buffer 的不可变创建描述。 */
+struct BufferDescriptor
+{
+	DeviceSizeType Size { 0 };
+	EBufferUsage Usage {};
+	EMemoryProperty MemoryProperty { EMemoryProperty_t::DeviceLocal };
+	std::string DebugName;
+};
+
+/**
+ * @brief 跨后端 Buffer 资源。
+ *
+ * map()/unmap() 只允许用于 HostVisible 内存；频繁更新路径可保持持久映射，
+ * 后续上传系统也可以在该接口之上实现 staging/ring allocator。
+ */
+class RBuffer
+{
+public:
+	virtual ~RBuffer() = default;
+	RBuffer(const RBuffer&) = delete;
+	RBuffer& operator=(const RBuffer&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual const BufferDescriptor& getDescriptor() const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+	[[nodiscard]] virtual void* map(DeviceSizeType Offset = 0, DeviceSizeType Size = 0) = 0;
+	virtual void unmap() = 0;
+	virtual void flush(DeviceSizeType Offset, DeviceSizeType Size) = 0;
+	virtual void invalidate(DeviceSizeType Offset, DeviceSizeType Size) = 0;
+
+protected:
+	RBuffer() = default;
+};
+
+/** @brief 不可变 Sampler 创建描述。 */
+struct SamplerDescriptor
+{
+	EFilterMode MinFilter { EFilterMode::Linear };
+	EFilterMode MagFilter { EFilterMode::Linear };
+	EFilterMode MipmapFilter { EFilterMode::Linear };
+	ESamplerAddressMode AddressU { ESamplerAddressMode::Repeat };
+	ESamplerAddressMode AddressV { ESamplerAddressMode::Repeat };
+	ESamplerAddressMode AddressW { ESamplerAddressMode::Repeat };
+	float MipLodBias { 0.0f };
+	float MinLod { 0.0f };
+	float MaxLod { 1000.0f };
+	float MaxAnisotropy { 1.0f };
+	bool CompareEnable { false };
+	ECompareOp CompareOperation { ECompareOp::Always };
+	std::string DebugName;
+};
+
+class RSampler
+{
+public:
+	virtual ~RSampler() = default;
+	RSampler(const RSampler&) = delete;
+	RSampler& operator=(const RSampler&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual const SamplerDescriptor& getDescriptor() const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RSampler() = default;
+};
+
 class RImageView
 {
 public:
@@ -713,6 +830,7 @@ public:
         return Descriptor.Image;
     }
 
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
     [[nodiscard]] virtual bool isValid() const noexcept = 0;
     [[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
@@ -752,6 +870,7 @@ public:
 	RImage& operator=(RImage&&) = delete;
 
 	[[nodiscard]] const Descriptor_t& getDescriptor() const noexcept { return Descriptor; }
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
 	[[nodiscard]] virtual bool isMemoryBound() const noexcept = 0;
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
@@ -884,6 +1003,7 @@ struct BindGroupLayoutEntry
 	EDescriptorType Type { EDescriptorType::UniformBuffer };
 	uint32_t ArrayCount { 1 };
 	EShaderStage Visibility {};
+	EDescriptorBindingFlags Flags {};
 
 	constexpr bool operator==(const BindGroupLayoutEntry&) const = default;
 };
@@ -904,11 +1024,107 @@ public:
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
 	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
 	[[nodiscard]] virtual std::span<const std::byte> getCompatibilityKey() const noexcept = 0;
+	[[nodiscard]] virtual std::span<const BindGroupLayoutEntry> getEntries() const noexcept = 0;
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
 	RBindGroupLayout() = default;
+};
+
+struct BufferBinding
+{
+	std::shared_ptr<RBuffer> Buffer;
+	DeviceSizeType Offset { 0 };
+	DeviceSizeType Size { 0 };
+};
+
+struct TextureBinding
+{
+	std::shared_ptr<RImageView> View;
+	EDescriptorImageLayout Layout { EDescriptorImageLayout::ShaderReadOnly };
+};
+
+/** @brief 带格式解释的 Buffer 区间，用于 Uniform/Storage Texel Buffer。 */
+struct TexelBufferBinding
+{
+	std::shared_ptr<RBuffer> Buffer;
+	EFormat Format { EFormat::Undefined };
+	DeviceSizeType Offset { 0 };
+	DeviceSizeType Size { 0 };
+};
+
+struct SamplerBinding
+{
+	std::shared_ptr<RSampler> Sampler;
+};
+
+struct CombinedImageSamplerBinding
+{
+	std::shared_ptr<RImageView> View;
+	std::shared_ptr<RSampler> Sampler;
+	EDescriptorImageLayout Layout { EDescriptorImageLayout::ShaderReadOnly };
+};
+
+struct AccelerationStructureBinding
+{
+	std::shared_ptr<RAccelerationStructure> AccelerationStructure;
+};
+
+using BindGroupResource = std::variant<
+	BufferBinding,
+	TexelBufferBinding,
+	TextureBinding,
+	SamplerBinding,
+	CombinedImageSamplerBinding,
+	AccelerationStructureBinding>;
+
+struct BindGroupEntry
+{
+	uint32_t Binding { 0 };
+	uint32_t ArrayElement { 0 };
+	BindGroupResource Resource;
+};
+
+struct BindGroupDescriptor
+{
+	std::shared_ptr<RBindGroupLayout> Layout;
+	std::vector<BindGroupEntry> Entries;
+	uint32_t VariableArrayCount { 0 };
+	std::string DebugName;
+};
+
+/** @brief 一个已写入具体资源、创建后不可变的资源绑定组。 */
+class RBindGroup
+{
+public:
+	virtual ~RBindGroup() = default;
+	RBindGroup(const RBindGroup&) = delete;
+	RBindGroup& operator=(const RBindGroup&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual const std::shared_ptr<RBindGroupLayout>& getLayout() const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RBindGroup() = default;
+};
+
+/** @brief 光线追踪加速结构的后端无关句柄接口。 */
+class RAccelerationStructure
+{
+public:
+	virtual ~RAccelerationStructure() = default;
+	RAccelerationStructure(const RAccelerationStructure&) = delete;
+	RAccelerationStructure& operator=(const RAccelerationStructure&) = delete;
+
+	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
+	[[nodiscard]] virtual bool isValid() const noexcept = 0;
+	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
+
+protected:
+	RAccelerationStructure() = default;
 };
 
 struct PushConstantRange
@@ -952,6 +1168,9 @@ public:
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
 	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
 	[[nodiscard]] virtual std::span<const std::byte> getCompatibilityKey() const noexcept = 0;
+	[[nodiscard]] virtual uint32_t getBindGroupLayoutCount() const noexcept = 0;
+	[[nodiscard]] virtual const std::shared_ptr<RBindGroupLayout>& getBindGroupLayout(
+		uint32_t GroupIndex) const = 0;
 	[[nodiscard]] virtual bool supportsPushConstants(
 		EShaderStage Stages,
 		uint32_t Offset,
@@ -1195,6 +1414,12 @@ public:
 		uint32_t Offset,
 		std::span<const std::byte> Data) = 0;
 	virtual void bindPipeline(const std::shared_ptr<RPipeline>& Pipeline) = 0;
+	virtual void bindBindGroups(
+		EPipelineType PipelineType,
+		const std::shared_ptr<RPipelineLayout>& Layout,
+		uint32_t FirstGroup,
+		std::span<const std::shared_ptr<RBindGroup>> Groups,
+		std::span<const uint32_t> DynamicOffsets = {}) = 0;
 
 	virtual void draw(
 		uint32_t VertexCount,
@@ -1320,13 +1545,15 @@ public:
 	RDevice() = default;
 	virtual ~RDevice() = default;
 
-	virtual RBuffer* createBuffer() = 0;
-	virtual RImage* createImage() = 0;
+	virtual std::shared_ptr<RBuffer> createBuffer(const BufferDescriptor& Desc) = 0;
+	virtual std::shared_ptr<RImage> createImage(const RImage::Descriptor_t& Desc) = 0;
     virtual std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) = 0;
-	virtual RSampler* createSampler() = 0;
+	virtual std::shared_ptr<RSampler> createSampler(const SamplerDescriptor& Desc = {}) = 0;
 	virtual std::shared_ptr<RShader> createShader(const ShaderDescriptor& Desc) = 0;
 	virtual std::shared_ptr<RBindGroupLayout> createBindGroupLayout(
 		const BindGroupLayoutDescriptor& Desc) = 0;
+	virtual std::shared_ptr<RBindGroup> createBindGroup(
+		const BindGroupDescriptor& Desc) = 0;
 	virtual std::shared_ptr<RPipelineLayout> createPipelineLayout(
 		const PipelineLayoutDescriptor& Desc) = 0;
 	virtual std::shared_ptr<RPipelineCache> createPipelineCache(

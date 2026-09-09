@@ -417,12 +417,12 @@ void VulkanRHI::createLogicalDevice()
         });
 
     vk::PhysicalDeviceVulkan13Features supported_vulkan13;
+    vk::PhysicalDeviceVulkan12Features supported_vulkan12;
     vk::PhysicalDeviceMultiviewFeatures supported_multiview;
-    vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures supported_separate_layouts;
     vk::PhysicalDeviceMeshShaderFeaturesEXT supported_mesh_shader;
-    supported_vulkan13.pNext = &supported_multiview;
-    supported_multiview.pNext = &supported_separate_layouts;
-    supported_separate_layouts.pNext = mesh_shader_extension_available
+    supported_vulkan13.pNext = &supported_vulkan12;
+    supported_vulkan12.pNext = &supported_multiview;
+    supported_multiview.pNext = mesh_shader_extension_available
         ? &supported_mesh_shader
         : nullptr;
     vk::PhysicalDeviceFeatures2 supported_features;
@@ -437,13 +437,29 @@ void VulkanRHI::createLogicalDevice()
     vk::PhysicalDeviceVulkan13Features enabled_vulkan13;
     enabled_vulkan13.dynamicRendering = VK_TRUE;
     enabled_vulkan13.synchronization2 = VK_TRUE;
+    vk::PhysicalDeviceVulkan12Features enabled_vulkan12;
+    enabled_vulkan12.descriptorIndexing = supported_vulkan12.descriptorIndexing;
+    enabled_vulkan12.runtimeDescriptorArray = supported_vulkan12.runtimeDescriptorArray;
+    enabled_vulkan12.descriptorBindingPartiallyBound = supported_vulkan12.descriptorBindingPartiallyBound;
+    enabled_vulkan12.descriptorBindingVariableDescriptorCount =
+        supported_vulkan12.descriptorBindingVariableDescriptorCount;
+    enabled_vulkan12.descriptorBindingUniformBufferUpdateAfterBind =
+        supported_vulkan12.descriptorBindingUniformBufferUpdateAfterBind;
+    enabled_vulkan12.descriptorBindingSampledImageUpdateAfterBind =
+        supported_vulkan12.descriptorBindingSampledImageUpdateAfterBind;
+    enabled_vulkan12.descriptorBindingStorageImageUpdateAfterBind =
+        supported_vulkan12.descriptorBindingStorageImageUpdateAfterBind;
+    enabled_vulkan12.descriptorBindingStorageBufferUpdateAfterBind =
+        supported_vulkan12.descriptorBindingStorageBufferUpdateAfterBind;
+    enabled_vulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind =
+        supported_vulkan12.descriptorBindingUniformTexelBufferUpdateAfterBind;
+    enabled_vulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind =
+        supported_vulkan12.descriptorBindingStorageTexelBufferUpdateAfterBind;
+    enabled_vulkan12.separateDepthStencilLayouts = supported_vulkan12.separateDepthStencilLayouts;
     vk::PhysicalDeviceMultiviewFeatures enabled_multiview;
     enabled_multiview.multiview = supported_multiview.multiview;
-    vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures enabled_separate_layouts;
-    enabled_separate_layouts.separateDepthStencilLayouts =
-        supported_separate_layouts.separateDepthStencilLayouts;
-    enabled_vulkan13.pNext = &enabled_multiview;
-    enabled_multiview.pNext = &enabled_separate_layouts;
+    enabled_vulkan13.pNext = &enabled_vulkan12;
+    enabled_vulkan12.pNext = &enabled_multiview;
     vk::PhysicalDeviceMeshShaderFeaturesEXT enabled_mesh_shader;
     enabled_mesh_shader.meshShader = mesh_shader_extension_available
         ? supported_mesh_shader.meshShader
@@ -451,7 +467,7 @@ void VulkanRHI::createLogicalDevice()
     enabled_mesh_shader.taskShader = mesh_shader_extension_available
         ? supported_mesh_shader.taskShader
         : VK_FALSE;
-    enabled_separate_layouts.pNext = enabled_mesh_shader.meshShader
+    enabled_multiview.pNext = enabled_mesh_shader.meshShader
         ? &enabled_mesh_shader
         : nullptr;
 
@@ -465,6 +481,7 @@ void VulkanRHI::createLogicalDevice()
     enabled_features.depthClamp = supported_features.features.depthClamp;
     enabled_features.depthBounds = supported_features.features.depthBounds;
     enabled_features.sampleRateShading = supported_features.features.sampleRateShading;
+    enabled_features.samplerAnisotropy = supported_features.features.samplerAnisotropy;
     enabled_features.alphaToOne = supported_features.features.alphaToOne;
     enabled_features.independentBlend = supported_features.features.independentBlend;
 

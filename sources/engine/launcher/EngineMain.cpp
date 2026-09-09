@@ -1,5 +1,3 @@
-#include <memory>
-#include <new>
 #include <exception>
 #include <iostream>
 
@@ -9,7 +7,7 @@
 #include "RTGlobal.hpp"
 #include "CommandLine.hpp"
 #include "ModuleLoader.hpp"
-#include <RHIServer.hpp>
+#include <renderer/RendererServer.hpp>
 
 int EngineMain(int argc, char** argv)
 {
@@ -41,26 +39,27 @@ int EngineMain(int argc, char** argv)
 		ui::GenericWindowPointer generic_window = generic_application->makeWindow(window_descriptor);
 		generic_window->show();
 
-		// RenderServer 只接收跨平台 GenericWindow，并在内部选择和初始化具体 RHI。
-		auto& render_server = rhi::RenderServer::self();
-		render_server.initialize(rhi::ESupportedBackendAPI::Vulkan, generic_window);
-		if (!render_server.isInitialized())
+		// UI 只依赖 Renderer；后端创建、反射与 BindGroup 均由下层管理。
+		auto& renderer = runtime::renderer::RendererServer::self();
+		renderer.initialize(rhi::ESupportedBackendAPI::Vulkan, generic_window);
+		if (!renderer.isInitialized())
 		{
-			throw std::runtime_error("RHI initialization did not complete.");
+			throw std::runtime_error("Renderer initialization did not complete.");
 		}
+		renderer.runBindGroupSmokeTest();
 
 		GSeedEngine.initialize();
 		GSeedEngine.run();
 		GSeedEngine.destroy();
 
-		render_server.shutdown();
+		renderer.shutdown();
 		generic_window.reset();
 		generic_application.reset();
 		return 0;
 	}
 	catch (const std::exception& exception)
 	{
-		rhi::RenderServer::self().shutdown();
+		runtime::renderer::RendererServer::self().shutdown();
 		GSeedEngine.destroy();
 		std::cerr << "SeedEngine startup failed: " << exception.what() << '\n';
 		return 1;

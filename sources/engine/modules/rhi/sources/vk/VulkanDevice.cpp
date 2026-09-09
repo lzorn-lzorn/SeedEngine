@@ -1,10 +1,14 @@
 #include "RHI.h"
 #include "VulkanRHI.h"
+#include "VulkanBindGroup.hpp"
+#include "VulkanBuffer.hpp"
 #include "VulkanCommandList.h"
 #include "VulkanDevice.h"
 #include "VulkanDeviceMemory.h"
 #include "VulkanImageView.h"
+#include "VulkanImage.h"
 #include "VulkanPipeline.hpp"
+#include "VulkanSampler.hpp"
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -20,6 +24,7 @@ VulkanDevice::VulkanDevice(
 	, LogicalDevice(InLogicalDevice)
 	, GraphicsQueueFamilyIndex(InGraphicsQueueFamilyIndex)
 	, GraphicsQueue(LogicalDevice->getQueue(InGraphicsQueueFamilyIndex, 0))
+	, DescriptorAllocator(std::make_shared<VulkanDescriptorAllocator>(*this))
 {
 	const auto queue_families = RealGPU.getQueueFamilyProperties();
 	if (InGraphicsQueueFamilyIndex >= queue_families.size())
@@ -35,10 +40,13 @@ VulkanDevice::VulkanDevice(
 	Limits.MaxVertexInputAttributes = properties.limits.maxVertexInputAttributes;
 	Limits.MaxPushConstantSize = properties.limits.maxPushConstantsSize;
 	Limits.MaxBoundBindGroups = properties.limits.maxBoundDescriptorSets;
+	Limits.MinUniformBufferOffsetAlignment = properties.limits.minUniformBufferOffsetAlignment;
+	Limits.MinStorageBufferOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
+	Limits.MinTexelBufferOffsetAlignment = properties.limits.minTexelBufferOffsetAlignment;
 
 	vk::PhysicalDeviceVulkan13Features vulkan13_features;
+	vk::PhysicalDeviceVulkan12Features vulkan12_features;
 	vk::PhysicalDeviceMultiviewFeatures multiview_features;
-	vk::PhysicalDeviceSeparateDepthStencilLayoutsFeatures separate_layout_features;
 	vk::PhysicalDeviceMeshShaderFeaturesEXT mesh_shader_features;
 	const auto available_extensions = RealGPU.enumerateDeviceExtensionProperties();
 	const bool has_mesh_shader_extension = std::ranges::any_of(
@@ -49,16 +57,16 @@ VulkanDevice::VulkanDevice(
 				extension.extensionName.data(),
 				VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0;
 		});
-	vulkan13_features.pNext = &multiview_features;
-	multiview_features.pNext = &separate_layout_features;
-	separate_layout_features.pNext = has_mesh_shader_extension ? &mesh_shader_features : nullptr;
+	vulkan13_features.pNext = &vulkan12_features;
+	vulkan12_features.pNext = &multiview_features;
+	multiview_features.pNext = has_mesh_shader_extension ? &mesh_shader_features : nullptr;
 	vk::PhysicalDeviceFeatures2 features;
 	features.pNext = &vulkan13_features;
 	RealGPU.getFeatures2(&features);
 	Features.DynamicRendering = vulkan13_features.dynamicRendering == VK_TRUE;
 	Features.Synchronization2 = vulkan13_features.synchronization2 == VK_TRUE;
 	Features.Multiview = multiview_features.multiview == VK_TRUE;
-	Features.SeparateDepthStencilLayouts = separate_layout_features.separateDepthStencilLayouts == VK_TRUE;
+	Features.SeparateDepthStencilLayouts = vulkan12_features.separateDepthStencilLayouts == VK_TRUE;
 	Features.GeometryShader = features.features.geometryShader == VK_TRUE;
 	Features.TessellationShader = features.features.tessellationShader == VK_TRUE;
 	Features.FillModeNonSolid = features.features.fillModeNonSolid == VK_TRUE;
@@ -66,11 +74,27 @@ VulkanDevice::VulkanDevice(
 	Features.DepthClamp = features.features.depthClamp == VK_TRUE;
 	Features.DepthBounds = features.features.depthBounds == VK_TRUE;
 	Features.SampleRateShading = features.features.sampleRateShading == VK_TRUE;
+	Features.SamplerAnisotropy = features.features.samplerAnisotropy == VK_TRUE;
 	Features.AlphaToOne = features.features.alphaToOne == VK_TRUE;
 	Features.IndependentBlend = features.features.independentBlend == VK_TRUE;
+	Features.DescriptorIndexing = vulkan12_features.descriptorIndexing == VK_TRUE;
+	Features.RuntimeDescriptorArray = vulkan12_features.runtimeDescriptorArray == VK_TRUE;
+	Features.PartiallyBoundDescriptors =
+		vulkan12_features.descriptorBindingPartiallyBound == VK_TRUE;
+	Features.VariableDescriptorCount =
+		vulkan12_features.descriptorBindingVariableDescriptorCount == VK_TRUE;
+	Features.UpdateAfterBind =
+		vulkan12_features.descriptorBindingUniformBufferUpdateAfterBind == VK_TRUE &&
+		vulkan12_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE &&
+		vulkan12_features.descriptorBindingStorageImageUpdateAfterBind == VK_TRUE &&
+		vulkan12_features.descriptorBindingStorageBufferUpdateAfterBind == VK_TRUE &&
+		vulkan12_features.descriptorBindingUniformTexelBufferUpdateAfterBind == VK_TRUE &&
+		vulkan12_features.descriptorBindingStorageTexelBufferUpdateAfterBind == VK_TRUE;
 	Features.MeshShader = has_mesh_shader_extension && mesh_shader_features.meshShader == VK_TRUE;
 	Features.TaskShader = Features.MeshShader && mesh_shader_features.taskShader == VK_TRUE;
 }
+
+VulkanDevice::~VulkanDevice() = default;
 
 namespace
 {
@@ -80,14 +104,14 @@ namespace
 }
 }
 
-RBuffer* VulkanDevice::createBuffer()
+std::shared_ptr<RBuffer> VulkanDevice::createBuffer(const BufferDescriptor& Desc)
 {
-	throwResourceNotImplemented("buffer");
+	return VulkanBuffer::create(*this, Desc);
 }
 
-RImage* VulkanDevice::createImage()
+std::shared_ptr<RImage> VulkanDevice::createImage(const RImage::Descriptor_t& Desc)
 {
-	throwResourceNotImplemented("image");
+	return VulkanImage::create(*this, Desc);
 }
 
 std::shared_ptr<RImageView> VulkanDevice::createImageView(
@@ -96,9 +120,9 @@ std::shared_ptr<RImageView> VulkanDevice::createImageView(
 	return VulkanImageView::create(*this, Desc);
 }
 
-RSampler* VulkanDevice::createSampler()
+std::shared_ptr<RSampler> VulkanDevice::createSampler(const SamplerDescriptor& Desc)
 {
-	throwResourceNotImplemented("sampler");
+	return std::make_shared<VulkanSampler>(*this, Desc);
 }
 
 std::shared_ptr<RShader> VulkanDevice::createShader(const ShaderDescriptor& Desc)
@@ -110,6 +134,12 @@ std::shared_ptr<RBindGroupLayout> VulkanDevice::createBindGroupLayout(
 	const BindGroupLayoutDescriptor& Desc)
 {
 	return std::make_shared<VulkanBindGroupLayout>(*this, Desc);
+}
+
+std::shared_ptr<RBindGroup> VulkanDevice::createBindGroup(
+	const BindGroupDescriptor& Desc)
+{
+	return std::make_shared<VulkanBindGroup>(*this, DescriptorAllocator, Desc);
 }
 
 std::shared_ptr<RPipelineLayout> VulkanDevice::createPipelineLayout(

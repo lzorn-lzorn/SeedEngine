@@ -23,6 +23,8 @@ public:
 	void shutdown();
 	[[nodiscard]] bool isInitialized() const noexcept;
 	[[nodiscard]] IRHI* getRHI() const noexcept { return RHIInstance.get(); }
+	/** @return 当前 RHI 设备；服务器未初始化时为空。 */
+	[[nodiscard]] const std::shared_ptr<RDevice>& getDevice() const noexcept { return DeviceInstance; }
 
 private:
 	RHIServer();

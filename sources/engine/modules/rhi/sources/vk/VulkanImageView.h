@@ -13,6 +13,7 @@ class VulkanImageView final : public RImageView
 {
 public:
 	~VulkanImageView() override = default;
+	[[nodiscard]] RDevice& getDevice() const noexcept override { return getImage()->getDevice(); }
 	VulkanImageView(const VulkanImageView&) = delete;
 	VulkanImageView& operator=(const VulkanImageView&) = delete;
 	VulkanImageView(VulkanImageView&&) = delete;

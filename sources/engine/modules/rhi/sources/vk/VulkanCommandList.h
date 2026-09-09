@@ -54,6 +54,12 @@ public:
 		uint32_t Offset,
 		std::span<const std::byte> Data) override;
 	void bindPipeline(const std::shared_ptr<RPipeline>& Pipeline) override;
+	void bindBindGroups(
+		EPipelineType PipelineType,
+		const std::shared_ptr<RPipelineLayout>& Layout,
+		uint32_t FirstGroup,
+		std::span<const std::shared_ptr<RBindGroup>> Groups,
+		std::span<const uint32_t> DynamicOffsets = {}) override;
 
 	void draw(
 		uint32_t VertexCount,

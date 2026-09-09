@@ -33,6 +33,7 @@ public:
 
 	void allocateAndBindMemory(DeviceMemoryAllocator* Allocator = nullptr);
 
+	[[nodiscard]] RDevice& getDevice() const noexcept override;
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(getVkImage()); }
 	[[nodiscard]] bool isMemoryBound() const noexcept override { return isExternal() || Memory != nullptr; }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
@@ -41,7 +42,7 @@ public:
 	{
 		return std::holds_alternative<vk::Image>(Image);
 	}
-	[[nodiscard]] VulkanDevice& getDevice() const noexcept { return *Device; }
+	[[nodiscard]] VulkanDevice& getVulkanDevice() const noexcept { return *Device; }
 	[[nodiscard]] const std::shared_ptr<DeviceMemory>& getMemory() const noexcept { return Memory; }
 
 private:

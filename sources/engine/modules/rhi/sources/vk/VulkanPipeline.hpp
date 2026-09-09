@@ -48,6 +48,10 @@ public:
 	{
 		return CompatibilityKey;
 	}
+	[[nodiscard]] std::span<const BindGroupLayoutEntry> getEntries() const noexcept override
+	{
+		return Entries;
+	}
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(DescriptorSetLayout); }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
 	[[nodiscard]] vk::DescriptorSetLayout getVkDescriptorSetLayout() const noexcept
@@ -59,6 +63,7 @@ private:
 	VulkanDevice* Device { nullptr };
 	uint64_t CompatibilityHash { 0 };
 	std::vector<std::byte> CompatibilityKey;
+	std::vector<BindGroupLayoutEntry> Entries;
 	std::string DebugName;
 	vk::UniqueDescriptorSetLayout DescriptorSetLayout;
 };
@@ -75,6 +80,12 @@ public:
 	{
 		return CompatibilityKey;
 	}
+	[[nodiscard]] uint32_t getBindGroupLayoutCount() const noexcept override
+	{
+		return static_cast<uint32_t>(BindGroupLayouts.size());
+	}
+	[[nodiscard]] const std::shared_ptr<RBindGroupLayout>& getBindGroupLayout(
+		uint32_t GroupIndex) const override;
 	[[nodiscard]] bool supportsPushConstants(
 		EShaderStage Stages,
 		uint32_t Offset,

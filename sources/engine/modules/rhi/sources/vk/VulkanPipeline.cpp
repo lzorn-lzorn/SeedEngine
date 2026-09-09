@@ -77,30 +77,6 @@ vk::ShaderStageFlagBits toVk(EShaderStage_t Stage)
 	}
 }
 
-vk::DescriptorType toVk(EDescriptorType Type)
-{
-	switch (Type)
-	{
-	case EDescriptorType::UniformBuffer: return vk::DescriptorType::eUniformBuffer;
-	case EDescriptorType::DynamicUniformBuffer: return vk::DescriptorType::eUniformBufferDynamic;
-	case EDescriptorType::StorageBuffer:
-	case EDescriptorType::ReadOnlyStorageBuffer: return vk::DescriptorType::eStorageBuffer;
-	case EDescriptorType::DynamicStorageBuffer: return vk::DescriptorType::eStorageBufferDynamic;
-	case EDescriptorType::Sampler: return vk::DescriptorType::eSampler;
-	case EDescriptorType::SampledTexture: return vk::DescriptorType::eSampledImage;
-	case EDescriptorType::StorageTexture: return vk::DescriptorType::eStorageImage;
-	case EDescriptorType::CombinedImageSampler: return vk::DescriptorType::eCombinedImageSampler;
-#ifdef VK_KHR_acceleration_structure
-	case EDescriptorType::AccelerationStructure: return vk::DescriptorType::eAccelerationStructureKHR;
-#else
-	case EDescriptorType::AccelerationStructure:
-		throw std::invalid_argument("Acceleration structures are not available in this Vulkan build.");
-#endif
-	default:
-		throw std::invalid_argument("Unsupported descriptor type.");
-	}
-}
-
 vk::Format toVk(EVertexFormat Format)
 {
 	switch (Format)
@@ -728,38 +704,91 @@ void* VulkanShader::getNativeHandle() const noexcept
 VulkanBindGroupLayout::VulkanBindGroupLayout(
 	VulkanDevice& InDevice,
 	const BindGroupLayoutDescriptor& Desc)
-	: Device(&InDevice), DebugName(Desc.DebugName)
+	: Device(&InDevice), Entries(Desc.Entries), DebugName(Desc.DebugName)
 {
-	std::vector<BindGroupLayoutEntry> entries = Desc.Entries;
-	std::ranges::sort(entries, {}, &BindGroupLayoutEntry::Binding);
+	std::ranges::sort(Entries, {}, &BindGroupLayoutEntry::Binding);
 	std::vector<vk::DescriptorSetLayoutBinding> bindings;
-	bindings.reserve(entries.size());
+	std::vector<vk::DescriptorBindingFlags> binding_flags;
+	bindings.reserve(Entries.size());
+	binding_flags.reserve(Entries.size());
 	CompatibilityHash = HashOffset;
 	uint32_t previous_binding = 0;
 	bool has_previous_binding = false;
-	for (const auto& entry : entries)
+	bool uses_update_after_bind = false;
+	for (size_t index = 0; index < Entries.size(); ++index)
 	{
+		const auto& entry = Entries[index];
 		if (entry.ArrayCount == 0 || !entry.Visibility ||
 			(has_previous_binding && entry.Binding == previous_binding))
 			throw std::invalid_argument("Bind group layout entries require unique bindings, visibility and array count.");
+		if (entry.Flags.has(EDescriptorBindingFlag_t::DynamicOffset) &&
+			entry.Type != EDescriptorType::UniformBuffer &&
+			entry.Type != EDescriptorType::ReadOnlyStorageBuffer &&
+			entry.Type != EDescriptorType::ReadWriteStorageBuffer)
+		{
+			throw std::invalid_argument("Dynamic offsets are only valid for buffer descriptors.");
+		}
+		if (entry.Flags.has(EDescriptorBindingFlag_t::PartiallyBound) &&
+			!Device->getFeatures().PartiallyBoundDescriptors)
+			throw std::invalid_argument("Partially-bound descriptors are unsupported by this device.");
+		if (entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount) &&
+			(!Device->getFeatures().VariableDescriptorCount || index + 1 != Entries.size()))
+		{
+			throw std::invalid_argument(
+				"A variable descriptor array must be supported and use the greatest binding number.");
+		}
+		if (entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount) &&
+			entry.Flags.has(EDescriptorBindingFlag_t::DynamicOffset))
+			throw std::invalid_argument("Variable descriptor arrays cannot use dynamic offsets.");
+		if (entry.Flags.has(EDescriptorBindingFlag_t::UpdateAfterBind) &&
+			!Device->getFeatures().UpdateAfterBind)
+			throw std::invalid_argument("Update-after-bind descriptors are unsupported by this device.");
+		if (entry.Flags.has(EDescriptorBindingFlag_t::UpdateAfterBind) &&
+			(entry.Type == EDescriptorType::InputAttachment ||
+			 entry.Type == EDescriptorType::AccelerationStructure))
+		{
+			throw std::invalid_argument(
+				"This backend does not support update-after-bind for this descriptor type.");
+		}
 		previous_binding = entry.Binding;
 		has_previous_binding = true;
 		bindings.emplace_back(
 			entry.Binding,
-			toVk(entry.Type),
+			toVk(entry.Type, entry.Flags),
 			entry.ArrayCount,
 			toVk(entry.Visibility));
+		vk::DescriptorBindingFlags vk_flags;
+		if (entry.Flags.has(EDescriptorBindingFlag_t::PartiallyBound))
+			vk_flags |= vk::DescriptorBindingFlagBits::ePartiallyBound;
+		if (entry.Flags.has(EDescriptorBindingFlag_t::UpdateAfterBind))
+		{
+			vk_flags |= vk::DescriptorBindingFlagBits::eUpdateAfterBind;
+			uses_update_after_bind = true;
+		}
+		if (entry.Flags.has(EDescriptorBindingFlag_t::VariableArrayCount))
+			vk_flags |= vk::DescriptorBindingFlagBits::eVariableDescriptorCount;
+		binding_flags.emplace_back(vk_flags);
 		hashValue(CompatibilityHash, entry.Binding);
 		hashValue(CompatibilityHash, entry.Type);
 		hashValue(CompatibilityHash, entry.ArrayCount);
 		hashValue(CompatibilityHash, entry.Visibility.Value);
+		hashValue(CompatibilityHash, entry.Flags.Value);
 		appendKey(CompatibilityKey, entry.Binding);
 		appendKey(CompatibilityKey, entry.Type);
 		appendKey(CompatibilityKey, entry.ArrayCount);
 		appendKey(CompatibilityKey, entry.Visibility.Value);
+		appendKey(CompatibilityKey, entry.Flags.Value);
 	}
+	vk::DescriptorSetLayoutBindingFlagsCreateInfo binding_flags_info;
+	binding_flags_info.setBindingFlags(binding_flags);
+	const auto layout_flags = uses_update_after_bind
+		? vk::DescriptorSetLayoutCreateFlags(vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool)
+		: vk::DescriptorSetLayoutCreateFlags();
+	vk::DescriptorSetLayoutCreateInfo create_info(layout_flags, bindings);
+	if (!binding_flags.empty())
+		create_info.pNext = &binding_flags_info;
 	DescriptorSetLayout = Device->getVkDevice().createDescriptorSetLayoutUnique(
-		vk::DescriptorSetLayoutCreateInfo({}, bindings));
+		create_info);
 }
 
 RDevice& VulkanBindGroupLayout::getDevice() const noexcept { return *Device; }
@@ -827,6 +856,13 @@ VulkanPipelineLayout::VulkanPipelineLayout(
 }
 
 RDevice& VulkanPipelineLayout::getDevice() const noexcept { return *Device; }
+const std::shared_ptr<RBindGroupLayout>& VulkanPipelineLayout::getBindGroupLayout(
+	uint32_t GroupIndex) const
+{
+	if (GroupIndex >= BindGroupLayouts.size())
+		throw std::out_of_range("Bind group layout index is out of range.");
+	return BindGroupLayouts[GroupIndex];
+}
 bool VulkanPipelineLayout::supportsPushConstants(
 	EShaderStage Stages,
 	uint32_t Offset,

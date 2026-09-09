@@ -78,7 +78,79 @@ inline auto toVk(EBufferUsage Usage) -> vk::BufferUsageFlags
 	if (Usage.has(EBufferUsage_t::Indirect)) flags |= vk::BufferUsageFlags::BitsType::eIndirectBuffer;
 	if (Usage.has(EBufferUsage_t::TransferSrc)) flags |= vk::BufferUsageFlags::BitsType::eTransferSrc;
 	if (Usage.has(EBufferUsage_t::TransferDst)) flags |= vk::BufferUsageFlags::BitsType::eTransferDst;
+	if (Usage.has(EBufferUsage_t::UniformTexel)) flags |= vk::BufferUsageFlags::BitsType::eUniformTexelBuffer;
+	if (Usage.has(EBufferUsage_t::StorageTexel)) flags |= vk::BufferUsageFlags::BitsType::eStorageTexelBuffer;
 	return flags;
+}
+
+inline auto toVk(EDescriptorType Type, EDescriptorBindingFlags Flags = {}) -> vk::DescriptorType
+{
+	switch (Type)
+	{
+	case EDescriptorType::UniformBuffer:
+		return Flags.has(EDescriptorBindingFlag_t::DynamicOffset)
+			? vk::DescriptorType::eUniformBufferDynamic
+			: vk::DescriptorType::eUniformBuffer;
+	case EDescriptorType::ReadOnlyStorageBuffer:
+	case EDescriptorType::ReadWriteStorageBuffer:
+		return Flags.has(EDescriptorBindingFlag_t::DynamicOffset)
+			? vk::DescriptorType::eStorageBufferDynamic
+			: vk::DescriptorType::eStorageBuffer;
+	case EDescriptorType::Sampler:
+	case EDescriptorType::ComparisonSampler: return vk::DescriptorType::eSampler;
+	case EDescriptorType::SampledTexture: return vk::DescriptorType::eSampledImage;
+	case EDescriptorType::StorageTexture: return vk::DescriptorType::eStorageImage;
+	case EDescriptorType::UniformTexelBuffer: return vk::DescriptorType::eUniformTexelBuffer;
+	case EDescriptorType::StorageTexelBuffer: return vk::DescriptorType::eStorageTexelBuffer;
+	case EDescriptorType::CombinedImageSampler: return vk::DescriptorType::eCombinedImageSampler;
+	case EDescriptorType::InputAttachment: return vk::DescriptorType::eInputAttachment;
+#ifdef VK_KHR_acceleration_structure
+	case EDescriptorType::AccelerationStructure: return vk::DescriptorType::eAccelerationStructureKHR;
+#else
+	case EDescriptorType::AccelerationStructure:
+		throw std::invalid_argument("Acceleration structures are unavailable in this Vulkan build.");
+#endif
+	default:
+		throw std::invalid_argument("Unsupported descriptor type.");
+	}
+}
+
+inline auto toVk(EDescriptorImageLayout Layout) -> vk::ImageLayout
+{
+	switch (Layout)
+	{
+	case EDescriptorImageLayout::General: return vk::ImageLayout::eGeneral;
+	case EDescriptorImageLayout::DepthStencilReadOnly:
+		return vk::ImageLayout::eDepthStencilReadOnlyOptimal;
+	case EDescriptorImageLayout::ShaderReadOnly:
+	default:
+		return vk::ImageLayout::eShaderReadOnlyOptimal;
+	}
+}
+
+inline auto toVk(EFilterMode Mode) -> vk::Filter
+{
+	return Mode == EFilterMode::Nearest ? vk::Filter::eNearest : vk::Filter::eLinear;
+}
+
+inline auto toVkMipmapMode(EFilterMode Mode) -> vk::SamplerMipmapMode
+{
+	return Mode == EFilterMode::Nearest
+		? vk::SamplerMipmapMode::eNearest
+		: vk::SamplerMipmapMode::eLinear;
+}
+
+inline auto toVk(ESamplerAddressMode Mode) -> vk::SamplerAddressMode
+{
+	switch (Mode)
+	{
+	case ESamplerAddressMode::MirroredRepeat: return vk::SamplerAddressMode::eMirroredRepeat;
+	case ESamplerAddressMode::ClampToEdge: return vk::SamplerAddressMode::eClampToEdge;
+	case ESamplerAddressMode::ClampToBorder: return vk::SamplerAddressMode::eClampToBorder;
+	case ESamplerAddressMode::Repeat:
+	default:
+		return vk::SamplerAddressMode::eRepeat;
+	}
 }
 
 inline auto toVk(EImageUsage Usage) -> vk::ImageUsageFlags

@@ -105,6 +105,11 @@ void* VulkanImage::getNativeHandle() const noexcept
 	return reinterpret_cast<void*>(static_cast<VkImage>(getVkImage()));
 }
 
+RDevice& VulkanImage::getDevice() const noexcept
+{
+	return *Device;
+}
+
 vk::Image VulkanImage::getVkImage() const noexcept
 {
 	if (const auto* external_image = std::get_if<vk::Image>(&Image))

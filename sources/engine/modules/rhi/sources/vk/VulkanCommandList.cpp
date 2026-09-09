@@ -1,5 +1,6 @@
 #include "VulkanCommandList.h"
 
+#include "VulkanBindGroup.hpp"
 #include "VulkanDevice.h"
 #include "VulkanImage.h"
 #include "VulkanImageView.h"
@@ -579,6 +580,93 @@ void VulkanCommandList::bindPipeline(const std::shared_ptr<RPipeline>& Pipeline)
 		throw std::invalid_argument("This command list cannot bind the requested pipeline type.");
 	}
 	RetainedResources.emplace_back(Pipeline);
+}
+
+void VulkanCommandList::bindBindGroups(
+	EPipelineType PipelineType,
+	const std::shared_ptr<RPipelineLayout>& Layout,
+	uint32_t FirstGroup,
+	std::span<const std::shared_ptr<RBindGroup>> Groups,
+	std::span<const uint32_t> DynamicOffsets)
+{
+	requireRecording("bindBindGroups");
+	auto vk_layout = std::dynamic_pointer_cast<VulkanPipelineLayout>(Layout);
+	if (!vk_layout || &vk_layout->getDevice() != Device || !vk_layout->isValid())
+		throw std::invalid_argument("BindGroup pipeline layout belongs to another backend or device.");
+	if (PipelineType != EPipelineType::Graphics && PipelineType != EPipelineType::Compute)
+		throw std::invalid_argument("BindGroups can only be bound to graphics or compute pipelines.");
+	if (PipelineType == EPipelineType::Compute)
+		requireOutsideRendering("bind compute BindGroups");
+	if (FirstGroup > vk_layout->getBindGroupLayoutCount() ||
+		Groups.size() > vk_layout->getBindGroupLayoutCount() - FirstGroup)
+		throw std::out_of_range("BindGroup range exceeds the pipeline layout.");
+
+	std::vector<vk::DescriptorSet> descriptor_sets;
+	descriptor_sets.reserve(Groups.size());
+	size_t dynamic_offset_index = 0;
+	for (size_t group_index = 0; group_index < Groups.size(); ++group_index)
+	{
+		auto group = std::dynamic_pointer_cast<VulkanBindGroup>(Groups[group_index]);
+		if (!group || &group->getDevice() != Device || !group->isValid())
+			throw std::invalid_argument("Cannot bind an invalid or foreign BindGroup.");
+		const auto& expected_layout = vk_layout->getBindGroupLayout(
+			FirstGroup + static_cast<uint32_t>(group_index));
+		const auto expected_key = expected_layout->getCompatibilityKey();
+		const auto actual_key = group->getLayout()->getCompatibilityKey();
+		if (!std::ranges::equal(expected_key, actual_key))
+			throw std::invalid_argument("BindGroup layout is incompatible with the pipeline layout slot.");
+
+		for (const auto& layout_entry : group->getLayout()->getEntries())
+		{
+			if (!layout_entry.Flags.has(EDescriptorBindingFlag_t::DynamicOffset))
+				continue;
+			for (uint32_t element = 0; element < group->getDescriptorCount(layout_entry); ++element)
+			{
+				if (dynamic_offset_index >= DynamicOffsets.size())
+					throw std::invalid_argument("Too few dynamic offsets for the bound BindGroups.");
+				const uint32_t dynamic_offset = DynamicOffsets[dynamic_offset_index++];
+				const uint64_t alignment = layout_entry.Type == EDescriptorType::UniformBuffer
+					? Device->getLimits().MinUniformBufferOffsetAlignment
+					: Device->getLimits().MinStorageBufferOffsetAlignment;
+				if (dynamic_offset % alignment != 0)
+					throw std::invalid_argument("A dynamic buffer offset violates device alignment.");
+
+				const auto resource = std::ranges::find_if(group->getEntries(), [&](const BindGroupEntry& entry)
+				{
+					return entry.Binding == layout_entry.Binding && entry.ArrayElement == element;
+				});
+				if (resource != group->getEntries().end())
+				{
+					const auto* buffer_binding = std::get_if<BufferBinding>(&resource->Resource);
+					if (!buffer_binding || !buffer_binding->Buffer)
+						throw std::logic_error("Dynamic descriptor does not reference a buffer.");
+					const auto& desc = buffer_binding->Buffer->getDescriptor();
+					const uint64_t range = buffer_binding->Size == 0
+						? desc.Size - buffer_binding->Offset
+						: buffer_binding->Size;
+					if (dynamic_offset > desc.Size - buffer_binding->Offset ||
+						range > desc.Size - buffer_binding->Offset - dynamic_offset)
+						throw std::out_of_range("Dynamic buffer offset moves the descriptor range out of bounds.");
+				}
+			}
+		}
+		descriptor_sets.emplace_back(group->getVkDescriptorSet());
+		RetainedResources.emplace_back(std::move(group));
+	}
+	if (dynamic_offset_index != DynamicOffsets.size())
+		throw std::invalid_argument("Too many dynamic offsets for the bound BindGroups.");
+	if (descriptor_sets.empty())
+		return;
+
+	CommandBuffer->bindDescriptorSets(
+		PipelineType == EPipelineType::Graphics
+			? vk::PipelineBindPoint::eGraphics
+			: vk::PipelineBindPoint::eCompute,
+		vk_layout->getVkPipelineLayout(),
+		FirstGroup,
+		descriptor_sets,
+		DynamicOffsets);
+	RetainedResources.emplace_back(Layout);
 }
 
 void VulkanCommandList::draw(
