@@ -1,7 +1,7 @@
 #include "VulkanPipeline.hpp"
 
-#include "VulkanDevice.h"
-#include "VulkanRHI.h"
+#include "VulkanDevice.hpp"
+#include "VulkanRHI.hpp"
 
 #include <algorithm>
 #include <array>
@@ -141,6 +141,19 @@ vk::DynamicState toVk(EDynamicState_t State)
 	case EDynamicState_t::StencilReference: return vk::DynamicState::eStencilReference;
 	case EDynamicState_t::DepthBias: return vk::DynamicState::eDepthBias;
 	case EDynamicState_t::LineWidth: return vk::DynamicState::eLineWidth;
+	// VK_EXT_extended_dynamic_state / Vulkan 1.3 command-state mappings.
+	case EDynamicState_t::CullMode: return vk::DynamicState::eCullMode;
+	case EDynamicState_t::FrontFace: return vk::DynamicState::eFrontFace;
+	case EDynamicState_t::PrimitiveTopology: return vk::DynamicState::ePrimitiveTopology;
+	case EDynamicState_t::DepthTestEnable: return vk::DynamicState::eDepthTestEnable;
+	case EDynamicState_t::DepthWriteEnable: return vk::DynamicState::eDepthWriteEnable;
+	case EDynamicState_t::DepthCompareOp: return vk::DynamicState::eDepthCompareOp;
+	case EDynamicState_t::StencilTestEnable: return vk::DynamicState::eStencilTestEnable;
+	case EDynamicState_t::StencilOperations: return vk::DynamicState::eStencilOp;
+	case EDynamicState_t::StencilCompareMask: return vk::DynamicState::eStencilCompareMask;
+	case EDynamicState_t::StencilWriteMask: return vk::DynamicState::eStencilWriteMask;
+	// VK_EXT_vertex_input_dynamic_state supplies vkCmdSetVertexInputEXT.
+	case EDynamicState_t::VertexInput: return vk::DynamicState::eVertexInputEXT;
 	default:
 		throw std::invalid_argument(
 			"The requested extended dynamic state is not enabled by this Vulkan backend.");
@@ -480,6 +493,8 @@ void validateGraphicsPipelineDescriptor(
 		throw std::invalid_argument("Mesh shader path cannot use geometry or tessellation shaders.");
 	if (mesh_path && (!Desc.VertexInput.Buffers.empty() || !Desc.VertexInput.Attributes.empty()))
 		throw std::invalid_argument("Mesh shader path cannot use traditional vertex input.");
+	if (mesh_path && Desc.DynamicStates.has(EDynamicState_t::VertexInput))
+		throw std::invalid_argument("Mesh shader pipelines cannot use dynamic vertex input.");
 	if (mesh_path && !Device.getFeatures().MeshShader)
 		throw std::invalid_argument("Mesh shaders are unsupported by this device.");
 	if (Desc.Task.Shader && !Device.getFeatures().TaskShader)
@@ -506,6 +521,23 @@ void validateGraphicsPipelineDescriptor(
 		throw std::invalid_argument(
 			"Viewport and scissor must be dynamic because the descriptor contains no static values.");
 	}
+	constexpr uint64_t known_dynamic_states = (1ull << 17) - 1;
+	if ((Desc.DynamicStates.Value & ~known_dynamic_states) != 0)
+		throw std::invalid_argument("Pipeline requests an unknown dynamic state bit.");
+	const auto& features = Device.getFeatures();
+	const bool needs_extended_dynamic_state =
+		Desc.DynamicStates.has(EDynamicState_t::CullMode) ||
+		Desc.DynamicStates.has(EDynamicState_t::FrontFace) ||
+		Desc.DynamicStates.has(EDynamicState_t::PrimitiveTopology) ||
+		Desc.DynamicStates.has(EDynamicState_t::DepthTestEnable) ||
+		Desc.DynamicStates.has(EDynamicState_t::DepthWriteEnable) ||
+		Desc.DynamicStates.has(EDynamicState_t::DepthCompareOp) ||
+		Desc.DynamicStates.has(EDynamicState_t::StencilTestEnable) ||
+		Desc.DynamicStates.has(EDynamicState_t::StencilOperations);
+	if (needs_extended_dynamic_state && !features.ExtendedDynamicState)
+		throw std::invalid_argument("Pipeline requests VK_EXT_extended_dynamic_state without device support.");
+	if (Desc.DynamicStates.has(EDynamicState_t::VertexInput) && !features.DynamicVertexInput)
+		throw std::invalid_argument("Pipeline requests VK_EXT_vertex_input_dynamic_state without device support.");
 	if ((Desc.DepthStencil.DepthTestEnable || Desc.DepthStencil.DepthWriteEnable) &&
 		Desc.Rendering.DepthFormat == EFormat::Undefined)
 		throw std::invalid_argument("Depth testing or writing requires a depth attachment format.");
@@ -721,6 +753,9 @@ VulkanBindGroupLayout::VulkanBindGroupLayout(
 		if (entry.ArrayCount == 0 || !entry.Visibility ||
 			(has_previous_binding && entry.Binding == previous_binding))
 			throw std::invalid_argument("Bind group layout entries require unique bindings, visibility and array count.");
+		if (entry.Type == EDescriptorType::AccelerationStructure &&
+			!Device->getFeatures().AccelerationStructure)
+			throw std::invalid_argument("Acceleration-structure descriptors are unsupported by this device.");
 		if (entry.Flags.has(EDescriptorBindingFlag_t::DynamicOffset) &&
 			entry.Type != EDescriptorType::UniformBuffer &&
 			entry.Type != EDescriptorType::ReadOnlyStorageBuffer &&
@@ -936,19 +971,23 @@ VulkanPipeline::VulkanPipeline(
 	std::shared_ptr<RPipelineLayout> InLayout,
 	RenderingSignature InRendering,
 	EDynamicStates InDynamicStates,
+	EPrimitiveTopology InPrimitiveTopology,
 	bool InUsesMeshShaders,
 	uint64_t InCacheKey,
 	std::string InDebugName,
-	vk::UniquePipeline InPipeline)
+	vk::UniquePipeline InPipeline,
+	uint32_t InRayTracingGroupCount)
 	: Device(&InDevice)
 	, Type(InType)
 	, Layout(std::move(InLayout))
 	, Rendering(InRendering)
 	, DynamicStates(InDynamicStates)
+	, PrimitiveTopology(InPrimitiveTopology)
 	, UsesMeshShaders(InUsesMeshShaders)
 	, CacheKey(InCacheKey)
 	, DebugName(std::move(InDebugName))
 	, Pipeline(std::move(InPipeline))
+	, RayTracingGroupCount(InRayTracingGroupCount)
 {
 }
 
@@ -997,6 +1036,7 @@ std::shared_ptr<RPipeline> createVulkanGraphicsPipeline(
 		Desc.Layout,
 		Desc.Rendering,
 		Desc.DynamicStates,
+		Desc.InputAssembly.Topology,
 		static_cast<bool>(Desc.Mesh.Shader),
 		calculateGraphicsPipelineHash(Desc),
 		Desc.DebugName,
@@ -1029,6 +1069,7 @@ std::shared_ptr<RPipeline> createVulkanComputePipeline(
 		Desc.Layout,
 		RenderingSignature {},
 		EDynamicStates {},
+		EPrimitiveTopology::TriangleList,
 		false,
 		calculateComputePipelineHash(Desc),
 		Desc.DebugName,

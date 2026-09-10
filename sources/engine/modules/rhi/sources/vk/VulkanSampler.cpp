@@ -1,7 +1,7 @@
 #include "VulkanSampler.hpp"
 
-#include "VulkanDevice.h"
-#include "VulkanRHI.h"
+#include "VulkanDevice.hpp"
+#include "VulkanRHI.hpp"
 
 #include <stdexcept>
 

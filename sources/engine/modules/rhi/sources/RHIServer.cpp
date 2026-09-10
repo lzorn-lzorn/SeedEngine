@@ -1,7 +1,7 @@
 #include <RHIServer.hpp>
 
 #include <stdexcept>
-#include <vk/VulkanRHI.h>
+#include <vk/VulkanRHI.hpp>
 
 namespace rhi
 {

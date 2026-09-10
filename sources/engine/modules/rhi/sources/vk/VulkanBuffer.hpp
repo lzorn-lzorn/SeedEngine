@@ -1,6 +1,6 @@
 #pragma once
 
-#include <RHI.h>
+#include <RHI.hpp>
 #include <memory>
 #include <vulkan/vulkan.hpp>
 
@@ -29,6 +29,7 @@ public:
 	[[nodiscard]] const BufferDescriptor& getDescriptor() const noexcept override { return Descriptor; }
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(Buffer); }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
+	[[nodiscard]] DeviceAddress getDeviceAddress() const noexcept override;
 	[[nodiscard]] void* map(DeviceSizeType Offset = 0, DeviceSizeType Size = 0) override;
 	void unmap() override;
 	void flush(DeviceSizeType Offset, DeviceSizeType Size) override;

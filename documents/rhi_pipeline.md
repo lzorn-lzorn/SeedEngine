@@ -1,4 +1,71 @@
-# RHI CommandList、Dynamic Rendering 与 Pipeline 设计
+# RHI Pipeline、CommandList 与 Dynamic Rendering 契约
+
+> 本文只说明 Pipeline/CommandList 的局部契约。完整帧流程、实现状态、能力门控和剩余限制以
+> [现代 RHI 与 2D/3D 渲染全流程](modern_rhi_rendering_flow_zh.md) 为唯一状态源，避免维护重复清单。
+
+## 1. 三个独立概念
+
+| 概念 | 公共表示 | 语义 |
+|---|---|---|
+| Rendering Scope | `RenderingInfo`、`beginRendering()`/`endRendering()` | 本次实际附件、Load/Store/Clear/Resolve 和区域 |
+| Pipeline Compatibility | `RenderingSignature` | Color/Depth/Stencil format、sample count、view mask |
+| Logical Pass | Renderer/未来 RenderGraph | 资源读写、排序、裁剪、Barrier 和队列调度 |
+
+公共 RHI 不暴露持久 `RRenderPass`/Framebuffer。Vulkan 使用 Dynamic Rendering；Scope 不隐式
+生成 Barrier，资源状态始终由 Renderer/RenderGraph 明确传给 `RCommandList::barriers()`。
+
+## 2. Pipeline 对象与缓存
+
+`RShader`、`RBindGroupLayout`、`RPipelineLayout`、`RPipeline` 创建后不可变并绑定一个 `RDevice`。
+Graphics、Compute、Ray Tracing 使用各自描述符。Graphics Pipeline 与活动 Scope 在
+`beginRendering()`、`bindPipeline()` 和 Draw 前检查 `RenderingSignature`；Load/Store、具体 View、
+RenderArea 和 Resolve 目标不进入兼容键。
+
+两层缓存职责不同：
+
+- `RPipelineCache` 是驱动二进制缓存；同一缓存上的 create/merge/serialize 由后端外部同步；
+- `PipelineManager` 是完整语义键、并发去重和异步创建缓存，已覆盖 Graphics/Compute/Ray Tracing。
+
+哈希只用于定位，完整规范化键才证明相等。动态状态**声明集合**进入键；已声明为动态的字段值
+不进入键。DebugName、对象地址、实际附件和异步等待策略不进入键。
+
+## 3. CommandList 契约
+
+状态主线为 `Initial → Recording → Executable → Pending → Completed`，完成后才可安全 reset。
+Draw 只能在 Graphics Rendering Scope 内；Dispatch、copy、build AS 等遵循各自 Scope/Queue 限制。
+Queue submission 会保留 CommandList 及记录资源，直到内部完成 Fence 被 `poll()` 退休。
+
+动态状态已经包含基础 Vulkan 状态、`VK_EXT_extended_dynamic_state` 对应状态、Stencil mask 和
+`VK_EXT_vertex_input_dynamic_state`。Pipeline 请求的每一位必须有能力支持，并在 Draw 前通过 Setter
+初始化；否则显式失败。Viewport/Scissor 的当前 Pipeline 模型仍固定 count 为 1。
+
+Secondary 已支持 Dynamic Rendering inheritance：创建时填写
+`CommandListDescriptor::RenderingInheritance`，Primary Scope 设置
+`RenderingInfo::SecondaryCommandBuffers=true`，`executeSecondary()` 验证同设备、队列、状态和附件签名。
+声明 secondary contents 的 Primary Scope 禁止 inline Draw。
+
+## 4. 已实现高级路径
+
+- BindGroup/Descriptor arena、Push Constant、Vertex/Index、direct/indirect/mesh draw、copy/blit/fill；
+- Global/Buffer/Image Synchronization2 barrier 与可选队列所有权转换；
+- Timestamp/Occlusion/PipelineStatistics query、CPU readback、GPU result copy、时间换算；
+- Buffer Device Address；
+- BLAS/TLAS build/update、Ray Tracing Pipeline、shader-group handle 和 `traceRays()`；
+- PipelineManager 的 RT key/异步去重；
+- Debug label 和 capability-gated failure。
+
+详细的 BDA/AS/SBT 步骤、Query 布局、扩展名称及真实限制见主文档。
+
+## 5. 仍未完成
+
+- 完整 2D batching、3D RenderGraph、自动多队列调度和 transient alias heap；
+- 自动 SBT Builder、AS compaction/copy/serialization；
+- EDS3 专属公共 Setter；
+- Driver cache 持久文件兼容头/损坏恢复、PipelineManager LRU/失败退避/热重载代际；
+- 覆盖 Secondary、Query、HDR、RT 和设备丢失的 GPU CI；
+- D3D12/Metal/OpenGL 可用后端。
+
+契约测试只检查无设备语义，不冒充 GPU 执行测试。Vulkan Launcher 是当前真实设备 smoke path。# RHI CommandList、Dynamic Rendering 与 Pipeline 设计
 
 ## 1. 文档目的
 
@@ -721,7 +788,7 @@ Public Descriptor 已保存 Debug Name，但 Vulkan Debug Utils Object Name 尚�
 
 RHI Target 在模块 CMake 中把这些选项转换为值为 0/1 的私有 Compile Definition。后端选择、平台宏和后端依赖也放在 RHI 模块 CMake。GPU Feature 是运行时能力，不应伪装成编译开关。
 
-项目规范要求公共头使用 `.hpp` 并按模块目录组织。当前历史公共入口仍是单体 `RHI.h`；在 API 稳定后应兼容迁移为：
+项目规范要求公共头使用 `.hpp` 并按模块目录组织。当前公共入口是单体 `RHI.hpp`；在 API 稳定后应兼容迁移为：
 
 - `rhi/RHICommon.hpp`；
 - `rhi/RHIResource.hpp`；
@@ -917,7 +984,7 @@ RHI Target 在模块 CMake 中把这些选项转换为值为 0/1 的私有 Compi
 
 **实现建议**：
 
-1. 在不改语义的前提下拆分 `RHI.h`；
+1. 在不改语义的前提下拆分 `RHI.hpp`；
 2. 提供过渡聚合头；
 3. 修正历史拼写和命名时提供迁移周期；
 4. 将跨后端公共验证下沉到独立模块，避免 Vulkan 重复实现；

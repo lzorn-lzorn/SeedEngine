@@ -1,8 +1,8 @@
-#include "VulkanImage.h"
+#include "VulkanImage.hpp"
 
-#include "VulkanDevice.h"
-#include "VulkanDeviceMemory.h"
-#include "VulkanRHI.h"
+#include "VulkanDevice.hpp"
+#include "VulkanDeviceMemory.hpp"
+#include "VulkanRHI.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -79,24 +79,48 @@ void VulkanImage::allocateAndBindMemory(DeviceMemoryAllocator* Allocator)
 		throw std::logic_error(Memory ? "Vulkan image memory is already bound." : "Vulkan image is invalid.");
 	}
 
-	const vk::MemoryRequirements vk_requirements =
-		Device->getVkDevice().getImageMemoryRequirements(owned_image.get());
+	vk::MemoryDedicatedRequirements dedicated_requirements;
+	vk::MemoryRequirements2 requirements2;
+	requirements2.pNext = &dedicated_requirements;
+	const vk::ImageMemoryRequirementsInfo2 requirements_info(owned_image.get());
+	Device->getVkDevice().getImageMemoryRequirements2(&requirements_info, &requirements2);
+	const vk::MemoryRequirements& vk_requirements = requirements2.memoryRequirements;
 	const MemoryRequirements requirements {
 		.Size = vk_requirements.size,
 		.Alignment = vk_requirements.alignment,
-		.MemoryTypeBits = vk_requirements.memoryTypeBits
+		.MemoryTypeBits = vk_requirements.memoryTypeBits,
+		.PrefersDedicatedAllocation = dedicated_requirements.prefersDedicatedAllocation == VK_TRUE,
+		.RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
 	};
 
-	auto memory = Allocator
-		? Allocator->allocateMemory(requirements, getDescriptor().MemoryProperty)
-		: Device->allocateMemory(requirements, getDescriptor().MemoryProperty);
-	auto vulkan_memory = std::dynamic_pointer_cast<VulkanDeviceMemory>(memory);
-	if (!vulkan_memory)
+	std::shared_ptr<DeviceMemory> memory;
+	if (Allocator)
+		memory = Allocator->allocateMemory(requirements, getDescriptor().MemoryProperty);
+	else
+		memory = Device->allocateImageMemory({
+			.Requirements = requirements,
+			.Usage = EMemoryUsage::GPUOnly,
+			.RequiredProperties = getDescriptor().MemoryProperty,
+			.DebugName = "ImageMemory"
+		}, owned_image.get());
+
+	vk::DeviceMemory native_memory;
+	DeviceSizeType memory_offset = 0;
+	if (auto suballocation = std::dynamic_pointer_cast<VulkanMemoryAllocation>(memory))
+	{
+		native_memory = suballocation->getVkDeviceMemory();
+		memory_offset = suballocation->getAllocationInfo()->Offset;
+	}
+	else if (auto legacy = std::dynamic_pointer_cast<VulkanDeviceMemory>(memory))
+	{
+		native_memory = legacy->getVkDeviceMemory();
+	}
+	else
 	{
 		throw std::invalid_argument("Image allocator returned non-Vulkan device memory.");
 	}
 
-	Device->getVkDevice().bindImageMemory(owned_image.get(), vulkan_memory->getVkDeviceMemory(), 0);
+	Device->getVkDevice().bindImageMemory(owned_image.get(), native_memory, memory_offset);
 	Memory = std::move(memory);
 }
 

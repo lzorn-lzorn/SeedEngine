@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RHI.h"
+#include "RHI.hpp"
 
 #include <cstdint>
 #include <future>
@@ -9,12 +9,14 @@
 namespace rhi
 {
 
+/** @brief Configures bounded background pipeline compilation concurrency. */
 struct PipelineManagerDescriptor
 {
-	/** 固定数量后台编译线程；0 表示至少创建一个工作线程。 */
+	/** @brief Fixed background worker count; zero is normalized to at least one worker. */
 	uint32_t WorkerCount { 1 };
 };
 
+/** @brief Snapshot of semantic cache and in-flight compilation counters. */
 struct PipelineManagerStatistics
 {
 	uint64_t CacheHits { 0 };
@@ -33,25 +35,38 @@ struct PipelineManagerStatistics
 class PipelineManager final
 {
 public:
+	/** @brief Creates a semantic pipeline cache for one device. @param Device Device retained for every worker task. @param Desc Worker-pool configuration. */
 	explicit PipelineManager(
 		std::shared_ptr<RDevice> Device,
 		const PipelineManagerDescriptor& Desc = {});
+	/** @brief Waits for workers and releases all cached pipelines. */
 	~PipelineManager();
 
 	PipelineManager(const PipelineManager&) = delete;
 	PipelineManager& operator=(const PipelineManager&) = delete;
 
+	/** @brief Returns or synchronously compiles a graphics pipeline. @param Desc Complete immutable graphics descriptor. @return Shared cached pipeline, or nullptr when backend compilation fails. */
 	[[nodiscard]] std::shared_ptr<RPipeline> getOrCreateGraphics(
 		const GraphicsPipelineDescriptor& Desc);
+	/** @brief Returns or synchronously compiles a compute pipeline. @param Desc Complete immutable compute descriptor. @return Shared cached pipeline, or nullptr when backend compilation fails. */
 	[[nodiscard]] std::shared_ptr<RPipeline> getOrCreateCompute(
 		const ComputePipelineDescriptor& Desc);
+	/** @brief Returns or synchronously compiles a ray-tracing pipeline. @param Desc Complete immutable ray-tracing descriptor. @return Shared cached pipeline, or nullptr when unsupported or compilation fails. */
+	[[nodiscard]] std::shared_ptr<RPipeline> getOrCreateRayTracing(
+		const RayTracingPipelineDescriptor& Desc);
+	/** @brief Requests deduplicated asynchronous graphics compilation. @param Desc Owning descriptor copied into the worker task. @return Shared future observed by all callers of the same semantic key. */
 	[[nodiscard]] std::shared_future<std::shared_ptr<RPipeline>> getOrCreateGraphicsAsync(
 		GraphicsPipelineDescriptor Desc);
+	/** @brief Requests deduplicated asynchronous compute compilation. @param Desc Owning descriptor copied into the worker task. @return Shared future observed by all callers of the same semantic key. */
 	[[nodiscard]] std::shared_future<std::shared_ptr<RPipeline>> getOrCreateComputeAsync(
 		ComputePipelineDescriptor Desc);
+	/** @brief Requests deduplicated asynchronous ray-tracing compilation. @param Desc Owning descriptor copied into the worker task. @return Shared future observed by all callers of the same semantic key. */
+	[[nodiscard]] std::shared_future<std::shared_ptr<RPipeline>> getOrCreateRayTracingAsync(
+		RayTracingPipelineDescriptor Desc);
 
-	/** 清除已完成缓存；正在编译的请求继续完成，但结果不再写回已清除代际。 */
+	/** @brief Clears completed cache entries; in-flight work completes but cannot repopulate the cleared generation. */
 	void clear();
+	/** @brief Returns a lock-safe counter snapshot. @return Current hit, miss, pending, and cached counts. */
 	[[nodiscard]] PipelineManagerStatistics getStatistics() const noexcept;
 
 private:

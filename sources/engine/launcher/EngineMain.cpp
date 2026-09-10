@@ -47,6 +47,12 @@ int EngineMain(int argc, char** argv)
 			throw std::runtime_error("Renderer initialization did not complete.");
 		}
 		renderer.runBindGroupSmokeTest();
+		// WSI smoke: minimized surfaces own no swapchain images, then restore without device idle.
+		renderer.resize(0, 0);
+		renderer.resize(
+			static_cast<uint32_t>(generic_window->getWidth()),
+			static_cast<uint32_t>(generic_window->getHeight()));
+		(void)renderer.renderFrame();
 
 		GSeedEngine.initialize();
 		GSeedEngine.run();

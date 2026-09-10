@@ -19,7 +19,6 @@ if(TRUE)
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/PipelineManager.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.hpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/sources/vk/*.h
             ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
         )
     endif()
@@ -38,7 +37,6 @@ else()
             file(GLOB_RECURSE SOURCES_LIST
                 ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx12/*.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx12/*.hpp
-                ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx12/*.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
             )
 
@@ -54,7 +52,6 @@ else()
                 file(GLOB_RECURSE SOURCES_LIST
                     ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx11/*.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx11/*.hpp
-                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/dx11/*.h
                     ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
                 )
             else()
@@ -90,7 +87,6 @@ else()
             file(GLOB_RECURSE SOURCES_LIST
                 ${CMAKE_CURRENT_SOURCE_DIR}/sources/metal/*.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/sources/metal/*.hpp
-                ${CMAKE_CURRENT_SOURCE_DIR}/sources/metal/*.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
             )
         else()
@@ -102,7 +98,6 @@ else()
                 file(GLOB_RECURSE SOURCES_LIST
                     ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.cpp
                     ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.hpp
-                    ${CMAKE_CURRENT_SOURCE_DIR}/sources/opengl/*.h
                     ${CMAKE_CURRENT_SOURCE_DIR}/includes/*.hpp
                 )
             else()

@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <string>
 
-#include <core/wrappers/Observer.h>
+#include <core/wrappers/Observer.hpp>
 
 #include "generic_application/UICommon.hpp"
 #include "generic_application/widget/WidgetCommon.hpp"

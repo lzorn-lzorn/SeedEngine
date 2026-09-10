@@ -1,8 +1,10 @@
 #pragma once
 
-#include <RHI.h>
+#include <RHI.hpp>
 
 #include <memory>
+#include <functional>
+#include <optional>
 
 namespace runtime::renderer
 {
@@ -17,6 +19,20 @@ namespace runtime::renderer
 class RendererServer final
 {
 public:
+	enum class EFrameStatus : uint8_t
+	{
+		Rendered,
+		Skipped,
+		SwapchainRecreated,
+		SurfaceLost,
+		DeviceLost
+	};
+
+	using FrameRecorder = std::function<void(
+		rhi::RCommandList&,
+		const std::shared_ptr<rhi::RImageView>&,
+		uint32_t,
+		uint32_t)>;
 	[[nodiscard]] static RendererServer& self() noexcept;
 
 	RendererServer(const RendererServer&) = delete;
@@ -36,6 +52,11 @@ public:
 
 	[[nodiscard]] bool isInitialized() const noexcept;
 	[[nodiscard]] const std::shared_ptr<rhi::RDevice>& getDevice() const noexcept;
+	/** @brief Returns the most recently completed GPU frame interval measured by timestamp queries. @return Nanoseconds, or std::nullopt before the first result or when unsupported. */
+	[[nodiscard]] std::optional<double> getLastGPUFrameTimeNanoseconds() const noexcept;
+
+	/** @brief Retains an object until all renderer submissions made so far have completed. */
+	[[nodiscard]] bool deferRelease(std::shared_ptr<void> Resource);
 
 	/**
 	 * @brief Exercises reflection, automatic resource resolution and descriptor binding.
@@ -44,9 +65,24 @@ public:
 	 */
 	void runBindGroupSmokeTest();
 
+	/**
+	 * @brief 录制并提交一帧。回调在默认颜色渲染作用域内执行。
+	 *
+	 * 无回调时执行一次清屏；有回调时可绑定 2D/3D Pipeline、BindGroup 和几何数据。
+	 */
+	[[nodiscard]] EFrameStatus renderFrame(const FrameRecorder& Recorder = {});
+
+	/** @brief 通知 Renderer 输出尺寸变化；0 尺寸表示窗口最小化。 */
+	void resize(uint32_t Width, uint32_t Height);
+
+	/** @brief Recreates only the native surface and swapchain after SurfaceLost. DeviceLost requires full application/RHI resource rebuild. */
+	[[nodiscard]] bool recoverSurface();
+
 private:
-	RendererServer() = default;
+	RendererServer();
 	~RendererServer();
+	struct Implementation;
+	std::unique_ptr<Implementation> Impl;
 };
 
 } // namespace runtime::renderer

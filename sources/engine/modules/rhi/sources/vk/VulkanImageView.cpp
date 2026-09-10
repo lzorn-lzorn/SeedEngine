@@ -1,8 +1,8 @@
-#include "VulkanImageView.h"
+#include "VulkanImageView.hpp"
 
-#include "VulkanDevice.h"
-#include "VulkanImage.h"
-#include "VulkanRHI.h"
+#include "VulkanDevice.hpp"
+#include "VulkanImage.hpp"
+#include "VulkanRHI.hpp"
 
 #include <stdexcept>
 #include <utility>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <RHI.h>
+#include <RHI.hpp>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -135,10 +135,12 @@ public:
 		std::shared_ptr<RPipelineLayout> Layout,
 		RenderingSignature Rendering,
 		EDynamicStates DynamicStates,
+		EPrimitiveTopology PrimitiveTopology,
 		bool UsesMeshShaders,
 		uint64_t CacheKey,
 		std::string DebugName,
-		vk::UniquePipeline Pipeline);
+		vk::UniquePipeline Pipeline,
+		uint32_t RayTracingGroupCount = 0);
 	~VulkanPipeline() override = default;
 
 	[[nodiscard]] RDevice& getDevice() const noexcept override;
@@ -158,6 +160,8 @@ public:
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(Pipeline); }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
 	[[nodiscard]] vk::Pipeline getVkPipeline() const noexcept { return Pipeline.get(); }
+	[[nodiscard]] EPrimitiveTopology getPrimitiveTopology() const noexcept { return PrimitiveTopology; }
+	[[nodiscard]] uint32_t getRayTracingGroupCount() const noexcept { return RayTracingGroupCount; }
 
 private:
 	VulkanDevice* Device { nullptr };
@@ -165,10 +169,12 @@ private:
 	std::shared_ptr<RPipelineLayout> Layout;
 	RenderingSignature Rendering {};
 	EDynamicStates DynamicStates {};
+	EPrimitiveTopology PrimitiveTopology { EPrimitiveTopology::TriangleList };
 	bool UsesMeshShaders { false };
 	uint64_t CacheKey { 0 };
 	std::string DebugName;
 	vk::UniquePipeline Pipeline;
+	uint32_t RayTracingGroupCount { 0 };
 };
 
 [[nodiscard]] std::shared_ptr<RPipeline> createVulkanGraphicsPipeline(
@@ -177,5 +183,8 @@ private:
 [[nodiscard]] std::shared_ptr<RPipeline> createVulkanComputePipeline(
 	VulkanDevice& Device,
 	const ComputePipelineDescriptor& Desc);
+[[nodiscard]] std::shared_ptr<RPipeline> createVulkanRayTracingPipeline(
+	VulkanDevice& Device,
+	const RayTracingPipelineDescriptor& Desc);
 
 } // namespace rhi

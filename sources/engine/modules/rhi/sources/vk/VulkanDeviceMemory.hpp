@@ -1,6 +1,8 @@
 #pragma once
-#include <RHI.h>
+#include <RHI.hpp>
 #include <list>
+#include <memory>
+#include <mutex>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
@@ -8,6 +10,68 @@ namespace rhi
 {
 
 class VulkanDevice;
+class VulkanMemoryBlock;
+
+/** @brief A buffer allocation backed by a device-owned best-fit memory page. */
+class VulkanMemoryAllocation final : public DeviceMemory
+{
+public:
+	~VulkanMemoryAllocation() override;
+	VulkanMemoryAllocation(const VulkanMemoryAllocation&) = delete;
+	VulkanMemoryAllocation& operator=(const VulkanMemoryAllocation&) = delete;
+
+	void* map(DeviceSizeType Offset = 0, DeviceSizeType Size = 0) override;
+	void unmap() override;
+	void flush(DeviceSizeType Offset, DeviceSizeType Size) override;
+	void invalidate(DeviceSizeType Offset, DeviceSizeType Size) override;
+	void release() override;
+	[[nodiscard]] MemoryRequirements getMemoryRequirements() const override { return Requirements; }
+	[[nodiscard]] EMemoryProperty getMemoryProperty() const override { return Info.Properties; }
+	[[nodiscard]] std::optional<MemoryAllocationInfo> getAllocationInfo() const override { return Info; }
+	[[nodiscard]] vk::DeviceMemory getVkDeviceMemory() const noexcept;
+
+private:
+	friend class VulkanMemoryAllocator;
+	VulkanMemoryAllocation(
+		std::shared_ptr<VulkanMemoryBlock> Block,
+		MemoryRequirements Requirements,
+		MemoryAllocationInfo Info,
+		DeviceSizeType ReservedSize);
+
+	std::shared_ptr<VulkanMemoryBlock> Block;
+	MemoryRequirements Requirements {};
+	MemoryAllocationInfo Info {};
+	DeviceSizeType ReservedSize { 0 };
+	std::mutex MapMutex;
+	bool IsMapped { false };
+};
+
+/**
+ * @brief Device-owned Vulkan memory page allocator used by buffers.
+ *
+ * Pages use aligned best-fit placement and sorted free ranges that coalesce on free.
+ * Large, required-dedicated, and preferred-dedicated resources receive private blocks.
+ */
+class VulkanMemoryAllocator final
+{
+public:
+	explicit VulkanMemoryAllocator(VulkanDevice& Device);
+	~VulkanMemoryAllocator();
+	VulkanMemoryAllocator(const VulkanMemoryAllocator&) = delete;
+	VulkanMemoryAllocator& operator=(const VulkanMemoryAllocator&) = delete;
+
+	[[nodiscard]] std::shared_ptr<VulkanMemoryAllocation> allocate(
+		const MemoryAllocationDescriptor& Desc,
+		bool RequireDeviceAddress,
+		vk::Buffer DedicatedBuffer = {},
+		vk::Image DedicatedImage = {});
+	void releaseCachedPages();
+
+private:
+	VulkanDevice* Device { nullptr };
+	std::mutex Mutex;
+	std::vector<std::shared_ptr<VulkanMemoryBlock>> Pages;
+};
 
 class VulkanDeviceMemory final : public DeviceMemory
 {

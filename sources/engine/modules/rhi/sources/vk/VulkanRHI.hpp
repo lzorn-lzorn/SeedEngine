@@ -2,8 +2,9 @@
 
 #include <memory>
 #include <stdexcept>
-#include <RHI.h>
+#include <RHI.hpp>
 #include <vulkan/vulkan.hpp>
+#include "VulkanContext.hpp"
 
 namespace rhi
 {
@@ -20,8 +21,10 @@ inline auto toVk(EFormat Fomat) -> vk::Format
 	case EFormat::RGBA8_UNorm: return vk::Format::eR8G8B8A8Unorm;
 	case EFormat::RGBA8_sRGB: return vk::Format::eR8G8B8A8Srgb;
 	case EFormat::BGRA8_UNorm: return vk::Format::eB8G8R8A8Unorm;
+	case EFormat::BGRA8_sRGB: return vk::Format::eB8G8R8A8Srgb;
 	case EFormat::RGBA16_Float: return vk::Format::eR16G16B16A16Sfloat;
 	case EFormat::RGBA32_Float: return vk::Format::eR32G32B32A32Sfloat;
+	case EFormat::RGB10A2_UNorm: return vk::Format::eA2B10G10R10UnormPack32;
 	case EFormat::D16_UNorm: return vk::Format::eD16Unorm;
 	case EFormat::D24_UNorm_S8_UInt: return vk::Format::eD24UnormS8Uint;
 	case EFormat::D32_Float: return vk::Format::eD32Sfloat;
@@ -58,6 +61,12 @@ inline auto toVk(EShaderStage Stage) -> vk::ShaderStageFlags
 	if (Stage.has(EShaderStage_t::Geometry)) result |= vk::ShaderStageFlags::BitsType::eGeometry;
 	if (Stage.has(EShaderStage_t::Hull)) result |= vk::ShaderStageFlags::BitsType::eTessellationControl;
 	if (Stage.has(EShaderStage_t::Domain)) result |= vk::ShaderStageFlags::BitsType::eTessellationEvaluation;
+	if (Stage.has(EShaderStage_t::RayGeneration)) result |= vk::ShaderStageFlags::BitsType::eRaygenKHR;
+	if (Stage.has(EShaderStage_t::AnyHit)) result |= vk::ShaderStageFlags::BitsType::eAnyHitKHR;
+	if (Stage.has(EShaderStage_t::ClosestHit)) result |= vk::ShaderStageFlags::BitsType::eClosestHitKHR;
+	if (Stage.has(EShaderStage_t::Miss)) result |= vk::ShaderStageFlags::BitsType::eMissKHR;
+	if (Stage.has(EShaderStage_t::Intersection)) result |= vk::ShaderStageFlags::BitsType::eIntersectionKHR;
+	if (Stage.has(EShaderStage_t::Callable)) result |= vk::ShaderStageFlags::BitsType::eCallableKHR;
 #ifdef VK_SHADER_STAGE_MESH_BIT_EXT
 	if (Stage.has(EShaderStage_t::Mesh)) result |= vk::ShaderStageFlags::BitsType::eMesh;
 #endif
@@ -80,6 +89,10 @@ inline auto toVk(EBufferUsage Usage) -> vk::BufferUsageFlags
 	if (Usage.has(EBufferUsage_t::TransferDst)) flags |= vk::BufferUsageFlags::BitsType::eTransferDst;
 	if (Usage.has(EBufferUsage_t::UniformTexel)) flags |= vk::BufferUsageFlags::BitsType::eUniformTexelBuffer;
 	if (Usage.has(EBufferUsage_t::StorageTexel)) flags |= vk::BufferUsageFlags::BitsType::eStorageTexelBuffer;
+	if (Usage.has(EBufferUsage_t::DeviceAddress)) flags |= vk::BufferUsageFlags::BitsType::eShaderDeviceAddress;
+	if (Usage.has(EBufferUsage_t::AccelerationStructureBuildInput)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureBuildInputReadOnlyKHR;
+	if (Usage.has(EBufferUsage_t::AccelerationStructureStorage)) flags |= vk::BufferUsageFlags::BitsType::eAccelerationStructureStorageKHR;
+	if (Usage.has(EBufferUsage_t::ShaderBindingTable)) flags |= vk::BufferUsageFlags::BitsType::eShaderBindingTableKHR;
 	return flags;
 }
 
@@ -173,6 +186,7 @@ inline vk::PrimitiveTopology toVk(EPrimitiveTopology Topology)
 	case EPrimitiveTopology::LineList: return vk::PrimitiveTopology::eLineList;
 	case EPrimitiveTopology::LineStrip: return vk::PrimitiveTopology::eLineStrip;
 	case EPrimitiveTopology::TriangleStrip: return vk::PrimitiveTopology::eTriangleStrip;
+	case EPrimitiveTopology::PatchList: return vk::PrimitiveTopology::ePatchList;
 	case EPrimitiveTopology::TriangleList:
 	default:
 		return vk::PrimitiveTopology::eTriangleList;
@@ -456,6 +470,10 @@ inline auto toVk(EColorSpace ColorSpace) -> vk::ColorSpaceKHR
         // 若是 HDR(PQ 曲线)，可用 eHdr10St2084EXT；
         // 否则建议抛出异常, 因为没有标准对应项.
 		return vk::ColorSpaceKHR::eBt2020LinearEXT;
+	case EColorSpace::HDR10_ST2084:
+		return vk::ColorSpaceKHR::eHdr10St2084EXT;
+	case EColorSpace::ExtendedSRGBLinear:
+		return vk::ColorSpaceKHR::eExtendedSrgbLinearEXT;
 	default:
 		throw std::runtime_error("Unsupported color space.");
 	}
@@ -519,20 +537,17 @@ public:
 	bool isInitialized() const noexcept override { return IsInitialized; }
 	ESupportedBackendAPI getBackendAPI() const override { return ESupportedBackendAPI::Vulkan; }
 	std::shared_ptr<RDevice> createDevice() override;
+	[[nodiscard]] bool recoverSurface(const ui::GenericWindowPointer& Window) override;
 
 public:
-	vk::Device& getVkDevice() { return LogicalDevice.get(); }
+	vk::Device& getVkDevice() { return Context->Device.get(); }
 private:
 	void createVkInstance();
 	void createVkSurface(const ui::GenericWindowPointer& Window);
 	void pickPhysicalDevice();
 	void createLogicalDevice();
 
-	vk::UniqueInstance Instance;
-	vk::PhysicalDevice RealGPU;
-	vk::UniqueDevice LogicalDevice;
-	vk::SurfaceKHR Surface { VK_NULL_HANDLE };
-	uint32_t GraphicsQueueFamilyIndex { UINT32_MAX };
+	VulkanContextPtr Context { std::make_shared<VulkanContext>() };
 	bool IsInitialized { false };
 
 };

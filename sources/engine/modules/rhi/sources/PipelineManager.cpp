@@ -125,6 +125,27 @@ PipelineKey makeComputeKey(const ComputePipelineDescriptor& Desc)
 	return key;
 }
 
+PipelineKey makeRayTracingKey(const RayTracingPipelineDescriptor& Desc)
+{
+	if (!Desc.Layout) throw std::invalid_argument("Ray-tracing pipeline requires a layout.");
+	PipelineKey key;
+	appendBytes(key, Desc.Layout->getCompatibilityKey());
+	const uint64_t stage_count = Desc.Stages.size();
+	append(key, stage_count);
+	for (const auto& stage : Desc.Stages) appendStage(key, stage);
+	const uint64_t group_count = Desc.Groups.size();
+	append(key, group_count);
+	for (const auto& group : Desc.Groups)
+	{
+		append(key, group.Type); append(key, group.GeneralShader);
+		append(key, group.ClosestHitShader); append(key, group.AnyHitShader);
+		append(key, group.IntersectionShader);
+	}
+	append(key, Desc.MaxRecursionDepth);
+	append(key, Desc.Compile.Flags.Value);
+	return key;
+}
+
 struct PipelineKeyHash
 {
 	size_t operator()(const PipelineKey& Key) const noexcept
@@ -281,6 +302,12 @@ std::shared_ptr<RPipeline> PipelineManager::getOrCreateCompute(
 	return getOrCreateComputeAsync(Desc).get();
 }
 
+std::shared_ptr<RPipeline> PipelineManager::getOrCreateRayTracing(
+	const RayTracingPipelineDescriptor& Desc)
+{
+	return getOrCreateRayTracingAsync(Desc).get();
+}
+
 std::shared_future<std::shared_ptr<RPipeline>> PipelineManager::getOrCreateGraphicsAsync(
 	GraphicsPipelineDescriptor Desc)
 {
@@ -300,6 +327,17 @@ std::shared_future<std::shared_ptr<RPipeline>> PipelineManager::getOrCreateCompu
 		[](RDevice& device, const ComputePipelineDescriptor& descriptor)
 		{
 			return device.createComputePipeline(descriptor);
+		});
+}
+
+std::shared_future<std::shared_ptr<RPipeline>> PipelineManager::getOrCreateRayTracingAsync(
+	RayTracingPipelineDescriptor Desc)
+{
+	return Implementation->request(
+		makeRayTracingKey(Desc), std::move(Desc),
+		[](RDevice& device, const RayTracingPipelineDescriptor& descriptor)
+		{
+			return device.createRayTracingPipeline(descriptor);
 		});
 }
 

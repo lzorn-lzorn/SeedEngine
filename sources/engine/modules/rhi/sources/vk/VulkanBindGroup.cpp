@@ -1,10 +1,11 @@
 #include "VulkanBindGroup.hpp"
 
 #include "VulkanBuffer.hpp"
-#include "VulkanDevice.h"
-#include "VulkanImageView.h"
+#include "VulkanDevice.hpp"
+#include "VulkanImageView.hpp"
 #include "VulkanPipeline.hpp"
-#include "VulkanRHI.h"
+#include "VulkanRHI.hpp"
+#include "VulkanRayTracing.hpp"
 #include "VulkanSampler.hpp"
 
 #include <algorithm>
@@ -98,6 +99,8 @@ vk::UniqueDescriptorPool VulkanDescriptorAllocator::createPool(
 	sizes.reserve(descriptor_types.size());
 	for (const auto type : descriptor_types)
 		sizes.emplace_back(type, descriptors_per_type);
+	if (Device->getFeatures().AccelerationStructure)
+		sizes.emplace_back(vk::DescriptorType::eAccelerationStructureKHR, descriptors_per_type);
 
 	vk::DescriptorPoolCreateFlags flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
 	if (UpdateAfterBind)
@@ -229,10 +232,14 @@ VulkanBindGroup::VulkanBindGroup(
 	std::vector<vk::DescriptorImageInfo> image_infos;
 	std::vector<vk::BufferView> texel_views;
 	std::vector<vk::WriteDescriptorSet> writes;
+	std::vector<VkWriteDescriptorSetAccelerationStructureKHR> acceleration_writes;
+	std::vector<VkAccelerationStructureKHR> acceleration_handles;
 	buffer_infos.reserve(Entries.size());
 	image_infos.reserve(Entries.size());
 	texel_views.reserve(Entries.size());
 	writes.reserve(Entries.size());
+	acceleration_writes.reserve(Entries.size());
+	acceleration_handles.reserve(Entries.size());
 	TexelBufferViews.reserve(Entries.size());
 
 	for (const auto& entry : Entries)
@@ -338,6 +345,22 @@ VulkanBindGroup::VulkanBindGroup(
 				throw std::invalid_argument("Storage textures require the General descriptor image layout.");
 			image_infos.emplace_back(vk::Sampler{}, view->getVkImageView(), toVk(binding->Layout));
 			write.pImageInfo = &image_infos.back();
+		}
+		else if (layout_entry.Type == EDescriptorType::AccelerationStructure)
+		{
+			const auto* binding = std::get_if<AccelerationStructureBinding>(&entry.Resource);
+			auto structure = binding
+				? std::dynamic_pointer_cast<VulkanAccelerationStructure>(binding->AccelerationStructure)
+				: nullptr;
+			if (!Device->getFeatures().AccelerationStructure || !structure ||
+				&structure->getDevice() != Device || !structure->isValid())
+				throw std::invalid_argument("Acceleration-structure descriptor requires a valid Vulkan acceleration structure.");
+			acceleration_handles.emplace_back(static_cast<VkAccelerationStructureKHR>(structure->getVkHandle()));
+			acceleration_writes.push_back({
+				VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+				nullptr, 1, &acceleration_handles.back()
+			});
+			write.pNext = &acceleration_writes.back();
 		}
 		else
 		{
