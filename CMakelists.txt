@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.31)
 
+project(SEED              
+    LANGUAGES CXX C
+    DESCRIPTION "SEED"
+    VERSION 0.1.0
+)
+
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -9,19 +16,56 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(IDE_GROUP_SOURCES_IN_FOLDERS "Group source files by directory in IDE" ON)
 option(IDE_GROUP_PROJECTS_IN_FOLDERS "Group CMake targets into virtual folders by path" ON)
 
-project(SEED              
-    LANGUAGES CXX C
-    DESCRIPTION "SEED"
-    VERSION 0.1.0
-)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+foreach(cfg IN LISTS CMAKE_CONFIGURATION_TYPES)
+    string(TOUPPER ${cfg} CFG)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CFG} ${CMAKE_BINARY_DIR}/bin)
+endforeach()
 
+include(GNUInstallDirs)
 include(CTest)
-
 include(cmake/BuildTools.cmake)
 include(cmake/EngineBuildRule.cmake)
 
 add_subdirectory(sources)
 add_subdirectory(extern)
-if(BUILD_TESTING)
+
+if(BUILD_TESTING) # BUILD_TESTING 由 CTest 提供 
     add_subdirectory(tests)
+endif()
+
+install(TARGETS Launcher
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+set(SEED_INSTALL_DATA ${CMAKE_INSTALL_DATADIR}/seed)
+
+# 把 target 的产物装到安装目录
+#   类别	                    对应平台产物
+# RUNTIME	            Windows .exe/.dll；Linux/mac 可执行文件
+# LIBRARY	            Linux/mac .so/.dylib
+# ARCHIVE	            .a / .lib 静态库和导入库
+# INCLUDES DESTINATION	只影响 exported target 的头文件路径
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/assets/  DESTINATION ${SEED_INSTALL_DATA}/assets)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/shaders/ DESTINATION ${SEED_INSTALL_DATA}/shaders)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/configs/ DESTINATION ${SEED_INSTALL_DATA}/configs)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/     DESTINATION ${CMAKE_INSTALL_LIBDIR})
+# saved/ 和 logs/ 是运行时生成的，不安装
+
+if(WIN32)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/
+        DESTINATION ${CMAKE_INSTALL_BINDIR} FILES_MATCHING PATTERN "*.dll")
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/
+        DESTINATION ${CMAKE_INSTALL_LIBDIR} FILES_MATCHING PATTERN "*.lib")
+else()
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/lib/
+        DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
+
+if(APPLE)
+    set(CMAKE_INSTALL_RPATH "@loader_path/../${CMAKE_INSTALL_LIBDIR}")
+elseif(UNIX)
+    set(CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
 endif()

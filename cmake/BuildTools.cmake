@@ -579,3 +579,14 @@ function(ADD_CHECK_CXX_COMPILER_FLAGS _CXXFLAGS)
   endforeach()
   set(${_CXXFLAGS} "${${_CXXFLAGS}}" PARENT_SCOPE)
 endfunction()
+
+
+function(SeedCopyResources tgt)
+    set(res_root ${CMAKE_BINARY_DIR}/resources)
+    foreach(res assets shaders configs)
+        add_custom_command(TARGET ${tgt} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_SOURCE_DIR}/${res} ${res_root}/${res}
+            COMMENT "Syncing ${res} -> ${res_root}")
+    endforeach()
+endfunction()

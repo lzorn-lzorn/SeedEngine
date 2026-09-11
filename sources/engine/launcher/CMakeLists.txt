@@ -3,6 +3,23 @@ set(TARGET_NAME Launcher)
 
 add_executable(${TARGET_NAME})
 
+add_custom_command(TARGET Launcher POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy -t $<TARGET_FILE_DIR:Launcher>
+            $<TARGET_RUNTIME_DLLS:Launcher>
+    COMMAND_EXPAND_LISTS
+    COMMENT "Copy runtime DLLs next to Launcher"
+)
+
+# 手工 lib/ 里的 dll（没走 target_link_libraries 的那些）
+if(WIN32)
+    add_custom_command(TARGET Launcher POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/lib $<TARGET_FILE_DIR:Launcher>
+    )
+endif()
+
+SeedCopyResources(${TARGET_NAME})
+
 target_sources(${TARGET_NAME} 
 PRIVATE
 	EngineMain.hpp
@@ -53,3 +70,4 @@ target_link_libraries(${TARGET_NAME} PRIVATE
 	Core::Core
 	Runtime::Runtime
 )
+
