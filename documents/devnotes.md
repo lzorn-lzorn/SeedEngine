@@ -12,9 +12,9 @@
 constexpr int32_t MaxSupportedNumber = 100; 
 
 enum class State {
-	Start,
-	End,
-	Hold
+    Start,
+    End,
+    Hold
 };
 ```
 
@@ -27,11 +27,11 @@ enum class State {
 ```Cpp
 template <typename Ty>
 struct TypeA {
-	using pointer = Ty*;
-	using const_pointer = const Ty*;
-	using value_type = Ty;
-	using size_type = std::size_t;
-	using difference_type = std::ptrdiff_t;
+    using pointer = Ty*;
+    using const_pointer = const Ty*;
+    using value_type = Ty;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
 };
 ```
 

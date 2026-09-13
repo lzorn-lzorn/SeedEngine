@@ -7,6 +7,6 @@
 #include "SMFControl.hpp"
 #include "ExceptionHandler.hpp"
 #include "STLInterface.hpp"
-
+#include "Global.hpp"
 
 // IWYU pragma: end_exports
