@@ -6,6 +6,11 @@
 #include <functional>
 #include <optional>
 
+/**
+ * @brief RendererServer 是一个单例渲染服务, 其面向外部提供统一的渲染服务. 
+ *  1. 负责 RHI 的生命周期管理, 包括设备创建, 资源管理, 渲染循环等.
+ *  2. 统一封装了 2D渲染器(UI 渲染) 和 3D渲染器(场景渲染, 角色渲染)
+ */
 namespace runtime::renderer
 {
 
