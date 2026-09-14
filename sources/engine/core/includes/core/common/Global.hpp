@@ -1,6 +1,7 @@
 #pragma once 
 
 #include <cstdint>
+#include <atomic>
 namespace core
 {
 
@@ -19,4 +20,8 @@ enum class ESystemType : uint8_t
 	Editor
 };
 
+using HandleIdType = uint64_t;
+
+inline constexpr HandleIdType InvalidHandleId = 0ull;
+inline std::atomic<uint64_t> GNextHandleId { 0 };
 }

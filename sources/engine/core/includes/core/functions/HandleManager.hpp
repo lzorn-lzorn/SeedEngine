@@ -15,9 +15,6 @@
 namespace core
 {
 
-using HandleIdType = uint64_t;
-inline constexpr HandleIdType InvalidHandleId = 0ull;
-
 struct Handle
 {
     HandleIdType Id = 0;
@@ -28,33 +25,39 @@ struct Handle
     constexpr std::strong_ordering operator<=>(const Handle& Rhs) const = default;
 };
 
-
+template <typename Ty, typename OwnerType>
 struct NameHandle
 {
+    using owner_type = OwnerType;
+    using holding_type = std::string;
+
+    OwnerType* Owner = nullptr;
     HandleIdType Id = 0;
     std::string Name;
 };
 
-template <typename Ty>
+template <typename Ty, typename OwnerType>
 struct SharedHandle
 {
+    using owner_type = OwnerType;
+    using holding_type = Ty;
+
+    OwnerType* Owner = nullptr;
     HandleIdType Id = 0;
-    std::shared_ptr<Ty> Ptr;
+    std::shared_ptr<Ty> Ptr = nullptr;
 
     constexpr SharedHandle() noexcept = default;
 
-    SharedHandle(HandleIdType Id, std::shared_ptr<Ty> ptr) noexcept
-        : Id(Id), Ptr(std::move(ptr)) {}
+    SharedHandle(OwnerType* Owner, HandleIdType Id, std::shared_ptr<Ty> ptr) noexcept
+        : Owner(Owner), Id(Id), Ptr(std::move(ptr)) {}
 
     template <typename DeleterType>
-    SharedHandle(HandleIdType Id, Ty* Ptr, DeleterType Deleter = DeleterType()) noexcept
-        : Id(Id), Ptr(Ptr, std::move(Deleter)) {}
+    SharedHandle(OwnerType* Owner, HandleIdType Id, Ty* Ptr, DeleterType Deleter = DeleterType()) noexcept
+        : Owner(Owner), Id(Id), Ptr(Ptr, std::move(Deleter)) {}
 
-
-    explicit SharedHandle(std::shared_ptr<Ty> ptr) noexcept
-        : Id(InvalidHandleId), Ptr(std::move(ptr)) {}
-
-    constexpr SharedHandle(std::nullptr_t) noexcept {}
+    template <typename ...Arg>
+    SharedHandle(OwnerType* Owner, HandleIdType Id, Arg... InParam) noexcept
+        : Owner(Owner), Id(Id), Ptr(std::make_shared<Ty>(InParam...)) {}
 
     constexpr bool operator==(const SharedHandle& Rhs) const noexcept { return equalWith(Rhs); }
     constexpr std::strong_ordering operator<=>(const SharedHandle& Rhs) const noexcept { return Id <=> Rhs.Id; }
@@ -104,6 +107,11 @@ struct UniqueHandle
     std::unique_ptr<Ty> Ptr;
 };
 
+template <typename OwnerType, typename HoldingType, typename DeleterType>
+static SharedHandle createSharedHandle(OwnerType* Owner, HoldingType* HoldingPointer, DeleterType Deleter = DeleterType()) noexcept
+{
+    return SharedHandle(Owner, ++GNextHandleId, HoldingPointer, Deleter);
+}
 } // namespace core
 
 namespace std
