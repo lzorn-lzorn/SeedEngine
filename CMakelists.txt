@@ -6,7 +6,6 @@ project(SEED
     VERSION 0.1.0
 )
 
-
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -15,6 +14,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # 开启以优化 IDE 体验
 option(IDE_GROUP_SOURCES_IN_FOLDERS "Group source files by directory in IDE" ON)
 option(IDE_GROUP_PROJECTS_IN_FOLDERS "Group CMake targets into virtual folders by path" ON)
+
+if(MSVC)
+    add_compile_options(/Zc:preprocessor)
+    # 常配套一起开：/Zc:__cplusplus /permissive-
+    add_compile_options(/Zc:__cplusplus /permissive-)
+endif()
+
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 foreach(cfg IN LISTS CMAKE_CONFIGURATION_TYPES)
