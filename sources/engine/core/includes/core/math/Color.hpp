@@ -86,7 +86,7 @@
  *   AgX 色调映射, Narkowicz 拟合 (AgX函数)
  * 
  */
- namespace core::math
+ namespace core
 {
 
 struct Color3D;

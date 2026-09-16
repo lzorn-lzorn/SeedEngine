@@ -13,8 +13,8 @@ struct LayoutConstraints
 {
 	UISize_t Minimum;
 	UISize_t Maximum {
-		core::math::Infinity<int32_t>, 
-		core::math::Infinity<int32_t>
+		core::Infinity<int32_t>, 
+		core::Infinity<int32_t>
 	};	
 
 	[[nodiscard]]

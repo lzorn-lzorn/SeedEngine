@@ -37,7 +37,7 @@ enum class EInteractionState_t : uint32_t
 	Selected = 1U << 5U,
 };
 
-using EInteractionState = core::wrappers::Flags<EInteractionState_t>;
+using EInteractionState = core::Flags<EInteractionState_t>;
 
 enum class EDirtyFlags_t : uint32_t 
 {
@@ -52,7 +52,7 @@ enum class EDirtyFlags_t : uint32_t
 	All = 0xFFFFFFFFU
 };
 
-using EDirtyFlags = core::wrappers::Flags<EDirtyFlags_t>;
+using EDirtyFlags = core::Flags<EDirtyFlags_t>;
 
 
 class UIElementChildBase

@@ -189,7 +189,8 @@ enum class EMemoryProperty_t : uint8_t
 };
 
 /** @brief Composable set of physical memory properties. */
-using EMemoryProperty = core::wrappers::Flags<EMemoryProperty_t>;
+using EMemoryProperty = core::Flags<EMemoryProperty_t>;
+DEFINE_ENUM_OPERATOR(EMemoryProperty_t);
 
 /** @brief High-level allocation intent used to rank otherwise valid memory types. */
 enum class EMemoryUsage : uint8_t
@@ -220,8 +221,8 @@ enum class EBufferUsage_t : uint32_t
 };
 
 /** @brief Composable set of buffer usage capabilities. */
-using EBufferUsage = core::wrappers::Flags<EBufferUsage_t>;
-
+using EBufferUsage = core::Flags<EBufferUsage_t>;
+DEFINE_ENUM_OPERATOR(EBufferUsage_t);
 /** @brief Selects the intended CPU access direction for a mapped buffer. */
 enum class EBufferMapMode : uint8_t
 {
@@ -245,7 +246,8 @@ enum class EImageUsage_t : uint32_t
 };
 
 /** @brief Composable set of image usage capabilities. */
-using EImageUsage = core::wrappers::Flags<EImageUsage_t>;
+using EImageUsage = core::Flags<EImageUsage_t>;
+DEFINE_ENUM_OPERATOR(EImageUsage_t);
 
 /** @brief Defines image dimensionality and array/cube interpretation. */
 enum class EImageDimension : uint8_t
@@ -301,7 +303,8 @@ enum class EShaderStage_t : uint32_t
 };
 
 /** @brief Composable visibility mask of shader stages. */
-using EShaderStage = core::wrappers::Flags<EShaderStage_t>;
+using EShaderStage = core::Flags<EShaderStage_t>;
+DEFINE_ENUM_OPERATOR(EShaderStage_t);
 
 /** @brief Describes the presentation surface transform applied by the compositor. */
 enum class ESurfaceTransform
@@ -382,7 +385,8 @@ enum class EPipelineStatistic_t : uint32_t
 };
 
 /** @brief Composable pipeline counter mask; result words follow ascending bit order. */
-using EPipelineStatistics = core::wrappers::Flags<EPipelineStatistic_t>;
+using EPipelineStatistics = core::Flags<EPipelineStatistic_t>;
+DEFINE_ENUM_OPERATOR(EPipelineStatistic_t);
 
 /** @brief Bit values controlling query result width, waiting, availability, and partial results. */
 enum class EQueryResultFlag_t : uint8_t
@@ -395,7 +399,8 @@ enum class EQueryResultFlag_t : uint8_t
 };
 
 /** @brief Composable query readback/copy policy flags. */
-using EQueryResultFlags = core::wrappers::Flags<EQueryResultFlag_t>;
+using EQueryResultFlags = core::Flags<EQueryResultFlag_t>;
+DEFINE_ENUM_OPERATOR(EQueryResultFlag_t);
 
 /** @brief Converts timestamp ticks to nanoseconds. @param TickDelta Raw tick delta masked to the device's valid timestamp bits. @param TimestampPeriodNanoseconds Nanoseconds represented by one tick from DeviceLimits. @return Converted duration, or zero when the period is non-positive. */
 [[nodiscard]] constexpr double timestampTicksToNanoseconds(
@@ -432,7 +437,8 @@ enum class EPipelineCompileFlag_t : uint32_t
 };
 
 /** @brief Composable pipeline compilation policy flags. */
-using EPipelineCompileFlags = core::wrappers::Flags<EPipelineCompileFlag_t>;
+using EPipelineCompileFlags = core::Flags<EPipelineCompileFlag_t>;
+DEFINE_ENUM_OPERATOR(EPipelineCompileFlag_t);
 
 /** @brief Defines how an attachment obtains its value at rendering start. */
 enum class ELoadOp
@@ -529,7 +535,8 @@ enum class EDescriptorBindingFlag_t : uint8_t
 };
 
 /** @brief Composable descriptor binding behavior flags. */
-using EDescriptorBindingFlags = core::wrappers::Flags<EDescriptorBindingFlag_t>;
+using EDescriptorBindingFlags = core::Flags<EDescriptorBindingFlag_t>;
+DEFINE_ENUM_OPERATOR(EDescriptorBindingFlag_t);
 
 /** @brief Declares the image layout/usage expected by a descriptor. */
 enum class EDescriptorImageLayout : uint8_t
@@ -663,7 +670,8 @@ enum class EDynamicState_t : uint64_t
 };
 
 /** @brief Composable set of pipeline states supplied during command recording. */
-using EDynamicStates = core::wrappers::Flags<EDynamicState_t>;
+using EDynamicStates = core::Flags<EDynamicState_t>;
+
 
 /** @brief Bit values selecting writable render-target color channels. */
 enum class EColorWriteMask_t : uint8_t
@@ -677,7 +685,8 @@ enum class EColorWriteMask_t : uint8_t
 };
 
 /** @brief Composable render-target channel write mask. */
-using EColorWriteMask = core::wrappers::Flags<EColorWriteMask_t>;
+using EColorWriteMask = core::Flags<EColorWriteMask_t>;
+DEFINE_ENUM_OPERATOR(EColorWriteMask_t);
 
 /** @brief Enumerates supported rasterization sample counts. */
 enum class ESampleCount
@@ -746,7 +755,8 @@ enum class EFormatFeature_t : uint32_t
 };
 
 /** @brief Composable format operation capability mask. */
-using EFormatFeatures = core::wrappers::Flags<EFormatFeature_t>;
+using EFormatFeatures = core::Flags<EFormatFeature_t>;
+DEFINE_ENUM_OPERATOR(EFormatFeature_t);
 
 /** @brief Forward declaration of the buffer resource wrapper. */ class RBuffer;
 /** @brief Forward declaration of the image resource wrapper. */ class RImage;
@@ -1591,7 +1601,7 @@ enum class EAccelerationStructureGeometryFlag_t : uint8_t
 };
 
 /** @brief Composable per-geometry ray interaction flags. */
-using EAccelerationStructureGeometryFlags = core::wrappers::Flags<EAccelerationStructureGeometryFlag_t>;
+using EAccelerationStructureGeometryFlags = core::Flags<EAccelerationStructureGeometryFlag_t>;
 
 /** @brief Bit values controlling acceleration-structure build performance and mutability. */
 enum class EAccelerationStructureBuildFlag_t : uint8_t
@@ -1605,7 +1615,8 @@ enum class EAccelerationStructureBuildFlag_t : uint8_t
 };
 
 /** @brief Composable acceleration-structure build policy flags. */
-using EAccelerationStructureBuildFlags = core::wrappers::Flags<EAccelerationStructureBuildFlag_t>;
+using EAccelerationStructureBuildFlags = core::Flags<EAccelerationStructureBuildFlag_t>;
+DEFINE_ENUM_OPERATOR(EAccelerationStructureBuildFlag_t);
 
 /** @brief Triangle vertex/index/transform buffers used to build bottom-level geometry. */
 struct AccelerationStructureTriangles

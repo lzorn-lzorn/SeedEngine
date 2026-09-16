@@ -6,7 +6,7 @@
 #include <tuple>
 #include <utility>
 
-namespace core::math
+namespace core
 {
 
 template <arithmetic Ty, std::size_t Dimensions>
@@ -467,4 +467,4 @@ using Vec4i = Vector<std::int32_t, 4>;
     return equalZeroNearly(Left.dot(Right), Tolerance);
 }
 
-} // namespace core::math
+} // namespace core

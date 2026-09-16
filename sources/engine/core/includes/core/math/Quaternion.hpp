@@ -5,7 +5,7 @@
 #include "Vector.hpp"
 #include "Matrix.hpp"
 #include "MathCommon.hpp"
-namespace core::math
+namespace core
 {
 
 struct Quaternion

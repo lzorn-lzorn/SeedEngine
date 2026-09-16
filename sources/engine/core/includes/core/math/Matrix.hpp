@@ -5,7 +5,7 @@
 #include <array>
 #include <cstddef>
 
-namespace core::math
+namespace core
 {
 
 template <arithmetic Ty, std::size_t Rows, std::size_t Columns = Rows>
@@ -228,4 +228,4 @@ using Mat4i = Matrix<std::int32_t, 4>;
 using Mat4f = Matrix<float, 4>;
 using Matrix4x4 = Mat4f;
 
-} // namespace core::math
+} // namespace core

@@ -41,7 +41,7 @@ enum class EPropertyFlags_t : uint32_t
 	Editable = 1U << 5U,
 	Animatable = 1U << 6U
 };
-using EPropertyFlags = core::wrappers::Flags<EPropertyFlags_t>;
+using EPropertyFlags = core::Flags<EPropertyFlags_t>;
 
 struct PropertyError
 {

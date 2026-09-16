@@ -108,9 +108,9 @@ struct UniqueHandle
 };
 
 template <typename OwnerType, typename HoldingType, typename DeleterType>
-static SharedHandle createSharedHandle(OwnerType* Owner, HoldingType* HoldingPointer, DeleterType Deleter = DeleterType()) noexcept
+static SharedHandle<OwnerType, HoldingType> createSharedHandle(OwnerType* Owner, HoldingType* HoldingPointer, DeleterType Deleter = DeleterType()) noexcept
 {
-    return SharedHandle(Owner, ++GNextHandleId, HoldingPointer, Deleter);
+    return SharedHandle<OwnerType, HoldingType>(Owner, ++GNextHandleId, HoldingPointer, Deleter);
 }
 } // namespace core
 

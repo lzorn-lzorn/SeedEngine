@@ -1,33 +1,47 @@
 #pragma once
 #include <type_traits>
 
-namespace core::wrappers
+namespace core
 {
 template<typename EnumType>
 concept enum_flag = std::is_enum_v<EnumType> && std::is_unsigned_v<std::underlying_type_t<EnumType>>;
 
-template<enum_flag EnumType>
-struct Flags {
+template<enum_flag EnumType, typename Derived>
+struct FlagsBase {
     using enum_type = EnumType;
     using underlying = std::underlying_type_t<EnumType>;
     underlying Value = 0;
 
-    constexpr Flags() noexcept = default;
-    constexpr Flags(EnumType E) noexcept : Value(static_cast<underlying>(E)) {}
-    explicit constexpr Flags(underlying V) noexcept : Value(V) {}
+    constexpr FlagsBase() noexcept = default;
+    constexpr FlagsBase(EnumType E) noexcept : Value(static_cast<underlying>(E)) {}
+    explicit constexpr FlagsBase(underlying V) noexcept : Value(V) {}
 
-    constexpr Flags operator|(Flags Other) const noexcept { return Flags(Value | Other.Value); }
-    constexpr Flags operator^(Flags Other) const noexcept { return Flags(Value ^ Other.Value); }
-    constexpr Flags operator&(Flags Other) const noexcept { return Flags(Value & Other.Value); }
-    constexpr Flags operator~() const noexcept { return Flags(~Value); }
+    constexpr Derived operator|(FlagsBase<EnumType, Derived> Other) const noexcept { return Derived(Value | Other.Value); }
+    constexpr Derived operator^(FlagsBase<EnumType, Derived> Other) const noexcept { return Derived(Value ^ Other.Value); }
+    constexpr Derived operator&(FlagsBase<EnumType, Derived> Other) const noexcept { return Derived(Value & Other.Value); }
+    constexpr Derived operator~() const noexcept { return Derived(~Value); }
 
-    constexpr bool operator==(Flags Other) const noexcept { return Value == Other.Value; }
-    constexpr bool operator!=(Flags Other) const noexcept { return Value != Other.Value; }
+    constexpr bool operator==(FlagsBase Other) const noexcept { return Value == Other.Value; }
+    constexpr bool operator!=(FlagsBase Other) const noexcept { return Value != Other.Value; }
+
+    constexpr Derived operator|(EnumType Other) const noexcept { return Derived(Value | static_cast<underlying>(Other)); }
+    constexpr Derived operator^(EnumType Other) const noexcept { return Derived(Value ^ static_cast<underlying>(Other)); }
+    constexpr Derived operator&(EnumType Other) const noexcept { return Derived(Value & static_cast<underlying>(Other)); }
+
+    constexpr bool operator==(EnumType Other) const noexcept { return Value == static_cast<underlying>(Other); }
+    constexpr bool operator!=(EnumType Other) const noexcept { return Value != static_cast<underlying>(Other); }
+
 
     constexpr explicit operator bool() const noexcept { return Value != 0; }
     constexpr bool has(EnumType E) const noexcept { return (Value & static_cast<underlying>(E)) != 0; }
     constexpr void set(EnumType E) noexcept { Value |= static_cast<underlying>(E); }
     constexpr void clear(EnumType E) noexcept { Value &= ~static_cast<underlying>(E); }
+};
+
+template<enum_flag EnumType>
+struct Flags : public FlagsBase<EnumType, Flags<EnumType>> {
+    using Base = FlagsBase<EnumType, Flags<EnumType>>;
+    using Base::Base;
 };
 
 // 枚举 | 枚举
@@ -93,5 +107,29 @@ constexpr Flags<EnumType> operator~(EnumType Other) noexcept {
     return ~Flags<EnumType>(Other);
 }
 
+} // namespace core
 
-}
+#define DEFINE_FLAGS(EnumType)                                                                          \
+    template<> struct core::Flags<EnumType> : public core::FlagsBase<EnumType, core::Flags<EnumType>> { \
+        using enum_type = EnumType;                                                                     \
+        using Base = core::FlagsBase<EnumType, core::Flags<EnumType>>;                                  \
+        using Base::Base;                                                                               \
+    };
+
+#define DEFINE_ENUM_OPERATOR(EnumType)                              \
+    constexpr EnumType operator|(EnumType a, EnumType b) noexcept { \
+        using U = std::underlying_type_t<EnumType>;                 \
+        return static_cast<EnumType>(U(a) | U(b));                  \
+    }                                                               \
+    constexpr EnumType operator&(EnumType a, EnumType b) noexcept { \
+        using U = std::underlying_type_t<EnumType>;                 \
+        return static_cast<EnumType>(U(a) & U(b));                  \
+    }                                                               \
+    constexpr EnumType operator^(EnumType a, EnumType b) noexcept { \
+        using U = std::underlying_type_t<EnumType>;                 \
+        return static_cast<EnumType>(U(a) ^ U(b));                  \
+    }                                                               \
+    constexpr EnumType operator~(EnumType a) noexcept {             \
+        using U = std::underlying_type_t<EnumType>;                 \
+        return static_cast<EnumType>(~U(a));                        \
+    }

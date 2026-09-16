@@ -22,7 +22,7 @@ enum class EWindowType : uint8_t
 struct WindowDescriptor
 {
 	std::string Title;
-	core::math::Vec2i LeftTopPoint;
+	core::Vec2i LeftTopPoint;
 	int Width, Height;
 	EWindowType WindowType;
 

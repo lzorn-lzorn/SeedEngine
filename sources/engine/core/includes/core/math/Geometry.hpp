@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include "Vector.hpp"
-namespace core::math
+namespace core
 {
 
 struct Rectangle
@@ -12,7 +12,7 @@ struct Rectangle
 	int32_t Width;
 	int32_t Height;
 
-	[[nodiscard]] bool isContains(const core::math::Vec2i& Point) const
+	[[nodiscard]] bool isContains(const core::Vec2i& Point) const
 	{
 		return Point.x() >= X 
 			&& Point.x() < X + Width 

@@ -8,6 +8,7 @@ add_internal_module(Renderer
     SOURCES             ${SOURCES_LIST}
     INCLUDES            "${CMAKE_CURRENT_SOURCE_DIR}/includes"
 						"${CMAKE_CURRENT_SOURCE_DIR}/includes/renderer"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/includes/material"
     PRIVATE_INCLUDES    "${CMAKE_CURRENT_SOURCE_DIR}/sources"
     PUBLIC_DEPENDENCY   Module::RHI
     PRIVATE_DEPENDENCY  Core::Core spirv-reflect-static

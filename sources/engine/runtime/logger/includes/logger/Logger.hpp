@@ -37,7 +37,7 @@ enum class LogDestination_t : std::uint8_t
 	All = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3),
 };
 
-using LogDestination = core::wrappers::Flags<LogDestination_t>;
+using LogDestination = core::Flags<LogDestination_t>;
 
 [[nodiscard]]
 constexpr bool hasDestination(LogDestination Value, LogDestination Test) noexcept

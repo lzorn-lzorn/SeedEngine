@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace core::wrappers
+namespace core
 {
 
 inline constexpr std::size_t DefaultDelegateInlineSize = 32;
@@ -1826,4 +1826,4 @@ using HeapDelegate = Delegate<Signature, 0>;
 template <typename Signature>
 using HeapUniqueDelegate = UniqueDelegate<Signature, 0>;
 
-} // namespace core::wrappers
+} // namespace core

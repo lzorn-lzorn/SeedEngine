@@ -9,7 +9,7 @@
 
 #include "core/common/Common.hpp"
 
-namespace core::wrappers::details
+namespace core::details
 {
 
 // 值存储层：独立，仅负责持有 Ty
@@ -214,8 +214,8 @@ private:
     std::atomic<Node_t*> Tail{nullptr};
 };;
 
-} // namespace core::wrappers::details
-namespace core::wrappers
+} // namespace core::details
+namespace core
 {
 template <typename Ty>
 class Observer

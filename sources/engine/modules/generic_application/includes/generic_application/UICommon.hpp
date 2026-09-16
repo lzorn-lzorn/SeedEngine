@@ -17,8 +17,8 @@ struct UISize_t
 	int32_t Height;
 };
 
-using UIVector = core::math::Vec2i;
-using UIColor = core::math::LinearColor4D;
-using UIRectangle = core::math::Rectangle;
+using UIVector = core::Vec2i;
+using UIColor = core::LinearColor4D;
+using UIRectangle = core::Rectangle;
 
 }

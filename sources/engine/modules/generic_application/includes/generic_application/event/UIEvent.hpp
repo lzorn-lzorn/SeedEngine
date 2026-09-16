@@ -162,7 +162,7 @@ enum class EKeyModifierType : uint16_t
 	Fn       = 1 << 7,
 };
 
-using EKeyModifier = core::wrappers::Flags<EKeyModifierType>;
+using EKeyModifier = core::Flags<EKeyModifierType>;
 
 
 // 键盘事件
@@ -202,7 +202,7 @@ struct MouseEvent
 
 	EMouseActionType MouseAction;
 	EMouseType MouseButton;
-	core::math::Vec1i Position;
+	core::Vec1i Position;
 	float WheelDelta;
 	uint8_t ClickedCount;
 };

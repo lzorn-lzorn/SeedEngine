@@ -15,7 +15,7 @@ class BindingContext
 {
 public:
 	template<typename Ty>
-	void expose(std::string Path, core::wrappers::Observer<Ty> Obs);
+	void expose(std::string Path, core::Observer<Ty> Obs);
 
 	void* getObserver(const std::string& Path) const;
 

@@ -6,7 +6,7 @@
 #include <limits>
 #include <numbers>
 
-namespace core::math
+namespace core
 {
 
 template <typename Number>
@@ -55,4 +55,4 @@ inline Ty alignUp(Ty Value, Ty Alignment) noexcept
     return (Value + Alignment - 1) & ~(Alignment - 1);
 }
 
-} // namespace core::math
+} // namespace core
