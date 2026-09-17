@@ -156,4 +156,175 @@ struct MaterialTemplateDescriptor
     rhi::EPipelineCompileFlags CompileFlags {};
 };
 
+class MaterialTemplateBase
+{
+public:
+    virtual ~MaterialTemplateBase() = default;
+
+    MaterialTemplateBase(const MaterialTemplateBase&) = delete;
+    MaterialTemplateBase& operator=(const MaterialTemplateBase&) = delete;
+
+    // ---- 类型查询 ----
+    [[nodiscard]] virtual const MaterialTemplateDescriptor& getDescriptor() const noexcept = 0;
+    [[nodiscard]] const std::string& getName() const noexcept { return Descriptor.Name; }
+    [[nodiscard]] const std::string& getCategory() const noexcept { return Descriptor.Category; }
+    [[nodiscard]] const MaterialTemplateDescriptor& getDesc() const noexcept { return Descriptor; }
+
+    // ---- RHI 资源查询 ----
+    [[nodiscard]] const std::shared_ptr<rhi::RPipeline>& getPipeline() const noexcept { return Pipeline; }
+    [[nodiscard]] const std::shared_ptr<rhi::RPipelineLayout>& getPipelineLayout() const noexcept { return PipelineLayout; }
+    [[nodiscard]] const std::shared_ptr<rhi::RBindGroupLayout>& getMaterialSetLayout() const noexcept { return MaterialSetLayout; }
+
+    // ---- 材质 Set 索引 ----
+    [[nodiscard]] uint32_t getMaterialSetIndex() const noexcept { return MaterialSetIndex; }
+
+    // ---- 参数查询 ----
+    // TODO: 返回裸指针的方式可能有问题
+    [[nodiscard]] const ParameterDescriptor* findParameter(std::string_view Name) const noexcept
+    {
+        auto it = ParameterLookup.find(std::string(Name));
+        return it != ParameterLookup.end() ? it->second : nullptr;
+    }
+
+    [[nodiscard]] const TextureBindingDescriptor* findTexture(std::string_view Name) const noexcept
+    {
+        auto it = TextureLookup.find(std::string(Name));
+        return it != TextureLookup.end() ? it->second : nullptr;
+    }
+
+    [[nodiscard]] uint32_t getUniformBlockSize() const noexcept { return Descriptor.MaterialUniforms.Size; }
+
+    // ---- 生命周期 ----
+    [[nodiscard]] bool isValid() const noexcept { return Pipeline != nullptr; }
+protected:
+    explicit MaterialTemplateBase(const MaterialTemplateDescriptor& InDescriptor) : Descriptor(std::move(InDescriptor)) {}
+
+    void buildMaterialSetLayout(rhi::RDevice& Device)
+    {
+        std::vector<rhi::BindGroupLayoutEntry> Entries;
+
+        // binding 0: 材质参数 UBO
+        if (Descriptor.MaterialUniforms.Size > 0)
+        {
+            Entries.push_back({
+                .Binding = 0,
+                .Type = rhi::EDescriptorType::UniformBuffer,
+                .ArrayCount = 1,
+                .Visibility = rhi::EShaderStage_t::Vertex | rhi::EShaderStage_t::Pixel,
+                .Flags = rhi::EDescriptorBindingFlags(rhi::EDescriptorBindingFlag_t::DynamicOffset)
+            });
+        }
+
+        // binding 1..N = 纹理 / 采样器
+        for (const auto& Tex : Descriptor.MaterialTextures)
+        {
+            Entries.push_back({
+                .Binding = Tex.Binding,
+                .Type = toDescriptorType(Tex.Type),
+                .ArrayCount = Tex.ArrayCount,
+                .Visibility = Tex.Visibility,
+                .Flags = {}
+            });
+        }
+
+        MaterialSetLayout = Device.createBindGroupLayout({ .Entries = std::move(Entries) });
+    }
+
+    // 构建 PipelineLayout（Set 0 / Set 1 / Set 2 / Push Constant）
+    void buildPipelineLayout(
+        rhi::RDevice& Device,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts,
+        uint32_t MaterialSetIndex
+    ){
+        this->MaterialSetIndex = MaterialSetIndex;
+
+        std::vector<std::shared_ptr<rhi::RBindGroupLayout>> Layouts;
+
+        // Set 0
+        Layouts.push_back(FrameLayout);
+
+        // Set 1：材质
+        Layouts.push_back(MaterialSetLayout);
+
+        // Set 2..N
+        for (const auto& L : ExtraLayouts) Layouts.push_back(L);
+
+        std::vector<rhi::PushConstantRange> PushRanges;
+        if (Descriptor.PushConstantSize > 0)
+        {
+            PushRanges.push_back({
+                .Stages = Descriptor.PushConstantStages,
+                .Offset = 0,
+                .Size   = Descriptor.PushConstantSize
+            });
+        }
+
+        PipelineLayout = Device.createPipelineLayout({
+            .BindGroupLayouts = std::move(Layouts),
+            .PushConstantRanges = std::move(PushRanges),
+            .DebugName = Descriptor.Name + ".PipelineLayout"
+        });
+    }
+
+    // 构建参数查找表
+    void buildParameterLookup()
+    {
+        for (const auto& P : Descriptor.MaterialUniforms.Parameters)
+        {
+            ParameterLookup[P.Name] = &P;
+        }
+        for (const auto& P : Descriptor.MaterialTextures)
+        {
+            TextureLookup[P.Name] = &P;
+        }
+    }
+
+    // 创建 Shader
+    [[nodiscard]] std::shared_ptr<rhi::RShader> createShader(
+        rhi::RDevice& Device,
+        const rhi::ShaderDescriptor& Desc)
+    {
+        return Device.createShader(Desc);
+    }
+
+    // 创建 Pipeline(派生类实现)
+    virtual void createPipeline(rhi::RDevice& Device) = 0;
+
+protected:
+    MaterialTemplateDescriptor Descriptor;
+
+    // TODO: 可能要变成 Handle 的形式
+    std::shared_ptr<rhi::RBindGroupLayout> MaterialSetLayout;
+    std::shared_ptr<rhi::RPipelineLayout> PipelineLayout;
+    std::shared_ptr<rhi::RPipeline> Pipeline;
+
+    uint32_t MaterialSetIndex { 0 };
+
+    std::unordered_map<std::string, const ParameterDescriptor*> ParameterLookup;
+    std::unordered_map<std::string, const TextureBindingDescriptor*> TextureLookup;
+private:
+    static rhi::EDescriptorType toDescriptorType(EParameterType T) noexcept
+    {
+        using DT = rhi::EDescriptorType;
+        switch (T) {
+            case EParameterType::Texture2D:
+            case EParameterType::Texture3D:
+            case EParameterType::TextureCube:
+            case EParameterType::Texture2DArray:
+                return DT::SampledTexture;
+            case EParameterType::Sampler:
+                return DT::Sampler;
+            case EParameterType::CombinedImageSampler2D:
+            case EParameterType::CombinedImageSampler3D:
+            case EParameterType::CombinedImageSamplerCube:
+                return DT::CombinedImageSampler;
+            case EParameterType::AccelerationStructure:
+                return DT::AccelerationStructure;
+            default:
+                return DT::UniformBuffer;
+        }
+    }
+};
+
 } // namespace renderer
