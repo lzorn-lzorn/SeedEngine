@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -327,4 +328,257 @@ private:
     }
 };
 
+class MaterialInstanceBase
+{
+public:
+    virtual ~MaterialInstanceBase() = default;
+
+    MaterialInstanceBase(const MaterialInstanceBase&) = delete;
+    MaterialInstanceBase& operator=(const MaterialInstanceBase&) = delete;
+
+    // ---- 参数写入（非虚，统一实现）----
+    void setFloat(std::string_view Name, float V) noexcept
+    {
+        writeParameter(Name, EParameterType::Float, &V, sizeof(V));
+    }
+
+    void setInt(std::string_view Name, int32_t V) noexcept
+    {
+        writeParameter(Name, EParameterType::Int, &V, sizeof(V));
+    }
+
+    void setUInt(std::string_view Name, uint32_t V) noexcept
+    {
+        writeParameter(Name, EParameterType::UInt, &V, sizeof(V));
+    }
+
+    void setBool(std::string_view Name, bool V) noexcept
+    {
+        uint32_t I = V ? 1u : 0u;
+        writeParameter(Name, EParameterType::Bool, &I, sizeof(I));
+    }
+
+    void setVec2(std::string_view Name, float X, float Y) noexcept
+    {
+        float V[2] = { X, Y };
+        writeParameter(Name, EParameterType::Vec2, V, sizeof(V));
+    }
+
+    void setVec3(std::string_view Name, float X, float Y, float Z) noexcept
+    {
+        float V[3] = { X, Y, Z };
+        writeParameter(Name, EParameterType::Vec3, V, sizeof(V));
+    }
+
+    void setVec4(std::string_view Name, const std::array<float, 4>& V) noexcept
+    {
+        writeParameter(Name, EParameterType::Vec4, V.data(), sizeof(float) * 4);
+    }
+
+    void setVec4(std::string_view Name, float X, float Y, float Z, float W) noexcept
+    {
+        float V[4] = { X, Y, Z, W };
+        writeParameter(Name, EParameterType::Vec4, V, sizeof(V));
+    }
+
+    void setMat4(std::string_view Name, const float M[16]) noexcept
+    {
+        writeParameter(Name, EParameterType::Mat4, M, sizeof(float) * 16);
+    }
+
+    void writeRaw(std::string_view Name, std::span<const std::byte> Data) noexcept
+    {
+        auto* P = Template->findParameter(Name);
+        if (!P) return;
+        if (P->Offset + Data.size() > UniformData.size()) return;
+        std::memcpy(UniformData.data() + P->Offset, Data.data(), Data.size());
+        IsUniformDirty = true;
+    }
+
+    // ---- 纹理绑定 ----
+    void setTexture(std::string_view Name, std::shared_ptr<rhi::RImageView> View)
+    {
+        auto* Desc = Template->findTexture(Name);
+        if (!Desc) return;
+        if (isCombinedType(Desc->Type))
+        {
+            // 组合纹理：更新已有 View，保留 Sampler
+            auto& Binding = TextureBindings[Desc->Binding];
+            if (auto* CIS = std::get_if<rhi::CombinedImageSamplerBinding>(&Binding))
+            {
+                CIS->View = std::move(View);
+            }
+            else
+            {
+                Binding = rhi::CombinedImageSamplerBinding{
+                    .View = std::move(View),
+                    .Sampler = nullptr,
+                    .Layout = rhi::EDescriptorImageLayout::ShaderReadOnly
+                };
+            }
+        }
+        else
+        {
+            TextureBindings[Desc->Binding] = rhi::TextureBinding{
+                .View = std::move(View),
+                .Layout = rhi::EDescriptorImageLayout::ShaderReadOnly
+            };
+        }
+        IsTextureDirty = true;
+    }
+
+    void setSampler(std::string_view Name, std::shared_ptr<rhi::RSampler> Sampler)
+    {
+        auto* Desc = Template->findTexture(Name);
+        if (!Desc) return;
+        if (isCombinedType(Desc->Type))
+        {
+            auto& Binding = TextureBindings[Desc->Binding];
+            if (auto* CIS = std::get_if<rhi::CombinedImageSamplerBinding>(&Binding))
+            {
+                CIS->Sampler = std::move(Sampler);
+            }
+            else
+            {
+                Binding = rhi::CombinedImageSamplerBinding{
+                    .View = nullptr,
+                    .Sampler = std::move(Sampler),
+                    .Layout = rhi::EDescriptorImageLayout::ShaderReadOnly
+                };
+            }
+        }
+        else
+        {
+            TextureBindings[Desc->Binding] = rhi::SamplerBinding{
+                .Sampler = std::move(Sampler)
+            };
+        }
+        IsTextureDirty = true;
+    }
+
+    void setCombinedImageSampler(
+        std::string_view Name,
+        std::shared_ptr<rhi::RImageView> View,
+        std::shared_ptr<rhi::RSampler>   Sampler)
+    {
+        auto* Desc = Template->findTexture(Name);
+        if (!Desc) return;
+        TextureBindings[Desc->Binding] = rhi::CombinedImageSamplerBinding{
+            .View = std::move(View),
+            .Sampler = std::move(Sampler),
+            .Layout = rhi::EDescriptorImageLayout::ShaderReadOnly
+        };
+        IsTextureDirty = true;
+    }
+
+    void setAccelerationStructure(
+        std::string_view Name,
+        std::shared_ptr<rhi::RAccelerationStructure> AS)
+    {
+        auto* Desc = Template->findTexture(Name);
+        if (!Desc) return;
+        TextureBindings[Desc->Binding] = rhi::AccelerationStructureBinding{
+            .AccelerationStructure = std::move(AS)
+        };
+        IsTextureDirty = true;
+    }
+
+    void commit(rhi::RDevice& Device, const std::shared_ptr<rhi::RBuffer>& DynamicUBO, uint32_t UBOOffset)
+    {
+        const uint32_t BlockSize = Template->getUniformBlockSize();
+
+        // 写入 Uniform 
+        if(BlockSize > 0 && IsUniformDirty)
+        {
+            void* Mapped = DynamicUBO->map(UBOOffset, BlockSize);
+            std::memcpy(Mapped, UniformData.data(), BlockSize);
+            DynamicUBO->unmap();
+            DynamicUBO->flush(UBOOffset, BlockSize);
+            UniformData.clear();
+            IsUniformDirty = false;
+        }
+
+        // 重建 BindGroup, 如果纹理变化或首次时重建
+        if (!BindGroup || IsTextureDirty)
+        {
+                        rhi::BindGroupDescriptor Desc;
+            Desc.Layout = Template->getMaterialSetLayout();
+
+            // binding 0 = 动态 UBO(实际 offset 通过 dynamicOffset 传入)
+            if (BlockSize > 0)
+            {
+                Desc.Entries.push_back({
+                    .Binding      = 0,
+                    .ArrayElement = 0,
+                    .Resource     = rhi::BufferBinding{
+                        .Buffer = DynamicUBO,
+                        .Offset = 0,
+                        .Size   = BlockSize
+                    }
+                });
+            }
+
+            // 纹理绑定
+            for (const auto& [Binding, Resource] : TextureBindings)
+            {
+                Desc.Entries.push_back({
+                    .Binding      = Binding,
+                    .ArrayElement = 0,
+                    .Resource     = Resource
+                });
+            }
+
+            Desc.DebugName = Template->getName() + ".BindGroup";
+            BindGroup = Device.createBindGroup(Desc);
+            IsTextureDirty = false;
+        }
+    }
+
+    [[nodiscard]] const std::shared_ptr<rhi::RBindGroup>& getBindGroup() const noexcept 
+    { 
+        return BindGroup; 
+    }
+    [[nodiscard]] const std::shared_ptr<MaterialTemplateBase>& getTemplate() const noexcept 
+    { 
+        return Template; 
+    }
+
+    [[nodiscard]] bool isDirty() const noexcept
+    {
+        return IsUniformDirty || IsTextureDirty;
+    }
+protected:
+    explicit MaterialInstanceBase(std::shared_ptr<MaterialTemplateBase> InTemplate) 
+        : Template(std::move(InTemplate))
+    {
+        UniformData.resize(Template->getUniformBlockSize(), std::byte{ 0 });
+    }
+
+    std::shared_ptr<MaterialTemplateBase> Template;
+    std::vector<std::byte> UniformData;
+    std::unordered_map<uint32_t, rhi::BindGroupResource> TextureBindings;
+    std::shared_ptr<rhi::RBindGroup> BindGroup;
+    bool IsUniformDirty { true };
+    bool IsTextureDirty { true };
+
+private:
+    void writeParameter(std::string_view Name, EParameterType Expected, const void* Data, size_t Size) noexcept
+    {
+        auto* P = Template->findParameter(Name);
+        if (!P || P->Type != Expected || P->Offset + Size > UniformData.size()) 
+        {
+            return ;
+        }
+
+        std::memcpy(UniformData.data() + P->Offset, Data, Size);
+        IsUniformDirty = true;
+    }
+
+    static bool isCombinedType(EParameterType T) noexcept
+    {
+        return T == EParameterType::CombinedImageSampler2D
+            || T == EParameterType::CombinedImageSampler3D
+            || T == EParameterType::CombinedImageSamplerCube;
+    }
+};
 } // namespace renderer
