@@ -83,4 +83,8 @@ struct Editor_t
 };
 
 inline std::atomic<uint64_t> GNextHandleId { 0 };
+
+#define CORE_CONCAT_IMPL(a, b) a##b
+#define CORE_CONCAT(a, b)      CORE_CONCAT_IMPL(a, b)
+
 }
