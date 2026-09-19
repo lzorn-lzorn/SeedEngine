@@ -166,10 +166,10 @@ public:
     MaterialTemplateBase& operator=(const MaterialTemplateBase&) = delete;
 
     // ---- 类型查询 ----
-    [[nodiscard]] virtual const MaterialTemplateDescriptor& getDescriptor() const noexcept = 0;
+    [[nodiscard]] virtual rhi::EPipelineType getPipelineType() const noexcept = 0;
     [[nodiscard]] const std::string& getName() const noexcept { return Descriptor.Name; }
     [[nodiscard]] const std::string& getCategory() const noexcept { return Descriptor.Category; }
-    [[nodiscard]] const MaterialTemplateDescriptor& getDesc() const noexcept { return Descriptor; }
+    [[nodiscard]] const MaterialTemplateDescriptor& getDescriptor() const noexcept { return Descriptor; }
 
     // ---- RHI 资源查询 ----
     [[nodiscard]] const std::shared_ptr<rhi::RPipeline>& getPipeline() const noexcept { return Pipeline; }
@@ -336,6 +336,12 @@ public:
     MaterialInstanceBase(const MaterialInstanceBase&) = delete;
     MaterialInstanceBase& operator=(const MaterialInstanceBase&) = delete;
 
+    explicit MaterialInstanceBase(std::shared_ptr<MaterialTemplateBase> InTemplate) 
+        : Template(std::move(InTemplate))
+    {
+        UniformData.resize(Template->getUniformBlockSize(), std::byte{ 0 });
+    }
+
     // ---- 参数写入（非虚，统一实现）----
     void setFloat(std::string_view Name, float V) noexcept
     {
@@ -386,11 +392,21 @@ public:
         writeParameter(Name, EParameterType::Mat4, M, sizeof(float) * 16);
     }
 
-    void writeRaw(std::string_view Name, std::span<const std::byte> Data) noexcept
-    {
+    void writeRaw(std::string_view Name, std::span<const std::byte> Data) noexcept {
         auto* P = Template->findParameter(Name);
-        if (!P) return;
-        if (P->Offset + Data.size() > UniformData.size()) return;
+        if (!P)
+        {
+            return;
+        }
+        const uint32_t TotalSize = P->Size * P->ArrayCount;
+        if (Data.size() > TotalSize)
+        {
+            return;
+        }
+        if (P->Offset + TotalSize > UniformData.size())
+        {
+            return;
+        }
         std::memcpy(UniformData.data() + P->Offset, Data.data(), Data.size());
         IsUniformDirty = true;
     }
@@ -494,14 +510,13 @@ public:
             std::memcpy(Mapped, UniformData.data(), BlockSize);
             DynamicUBO->unmap();
             DynamicUBO->flush(UBOOffset, BlockSize);
-            UniformData.clear();
             IsUniformDirty = false;
         }
 
         // 重建 BindGroup, 如果纹理变化或首次时重建
         if (!BindGroup || IsTextureDirty)
         {
-                        rhi::BindGroupDescriptor Desc;
+            rhi::BindGroupDescriptor Desc;
             Desc.Layout = Template->getMaterialSetLayout();
 
             // binding 0 = 动态 UBO(实际 offset 通过 dynamicOffset 传入)
@@ -547,12 +562,6 @@ public:
     {
         return IsUniformDirty || IsTextureDirty;
     }
-protected:
-    explicit MaterialInstanceBase(std::shared_ptr<MaterialTemplateBase> InTemplate) 
-        : Template(std::move(InTemplate))
-    {
-        UniformData.resize(Template->getUniformBlockSize(), std::byte{ 0 });
-    }
 
     std::shared_ptr<MaterialTemplateBase> Template;
     std::vector<std::byte> UniformData;
@@ -580,5 +589,299 @@ private:
             || T == EParameterType::CombinedImageSampler3D
             || T == EParameterType::CombinedImageSamplerCube;
     }
+};
+
+class GraphicsMaterialTemplate : public MaterialTemplateBase
+{
+public:
+    static std::shared_ptr<GraphicsMaterialTemplate> create(
+        rhi::RDevice& Device,
+        MaterialTemplateDescriptor InDescriptor,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts = {},
+        uint32_t MaterialSetIndex = 1)
+    {
+        auto Tmpl = std::shared_ptr<GraphicsMaterialTemplate>(
+            new GraphicsMaterialTemplate(std::move(InDescriptor)));
+        Tmpl->initialize(Device, FrameLayout, ExtraLayouts, MaterialSetIndex);
+        return Tmpl;
+    }
+
+    [[nodiscard]] rhi::EPipelineType getPipelineType() const noexcept override
+    {
+        return rhi::EPipelineType::Graphics;
+    }
+
+private:
+    explicit GraphicsMaterialTemplate(MaterialTemplateDescriptor D)
+        : MaterialTemplateBase(std::move(D)) {}
+
+    void initialize(
+        rhi::RDevice& Device,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts,
+        uint32_t MaterialSetIndex)
+    {
+        buildMaterialSetLayout(Device);
+        buildPipelineLayout(Device, FrameLayout, ExtraLayouts, MaterialSetIndex);
+        buildParameterLookup();
+        createPipeline(Device);
+    }
+
+    void createPipeline(rhi::RDevice& Device) override
+    {
+        std::shared_ptr<rhi::RShader> VS, FS, GS, HS, DS, MS, TS;
+
+        if (Descriptor.Shaders.Vertex)   VS = createShader(Device, *Descriptor.Shaders.Vertex);
+        if (Descriptor.Shaders.Pixel)    FS = createShader(Device, *Descriptor.Shaders.Pixel);
+
+        rhi::GraphicsPipelineDescriptor GP {
+            .Layout       = PipelineLayout,
+            .Vertex       = { .Shader = VS },
+            .Pixel        = { .Shader = FS },
+            .VertexInput  = Descriptor.VertexInput,
+            .InputAssembly = { .Topology = Descriptor.Topology },
+            .Rasterizer   = Descriptor.Rasterizer,
+            .Multisample  = Descriptor.Multisample,
+            .DepthStencil = Descriptor.DepthStencil,
+            .Blend        = Descriptor.Blend,
+            .Rendering    = Descriptor.Rendering,
+            .DynamicStates = rhi::EDynamicStates(rhi::EDynamicState_t::Viewport)
+                           | rhi::EDynamicState_t::Scissor,
+            .Compile      = { .Flags = Descriptor.CompileFlags },
+            .DebugName    = Descriptor.Name
+        };
+
+        Pipeline = Device.createGraphicsPipeline(GP);
+    }
+};
+
+class ComputeMaterialTemplate : public MaterialTemplateBase
+{
+public:
+    static std::shared_ptr<ComputeMaterialTemplate> create(
+        rhi::RDevice& Device,
+        MaterialTemplateDescriptor Desc,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts = {},
+        uint32_t MaterialSetIndex = 1)
+    {
+        auto Tmpl = std::shared_ptr<ComputeMaterialTemplate>(
+            new ComputeMaterialTemplate(std::move(Desc)));
+        Tmpl->initialize(Device, FrameLayout, ExtraLayouts, MaterialSetIndex);
+        return Tmpl;
+    }
+
+    [[nodiscard]] rhi::EPipelineType getPipelineType() const noexcept override
+    {
+        return rhi::EPipelineType::Compute;
+    }
+
+private:
+    explicit ComputeMaterialTemplate(MaterialTemplateDescriptor D)
+        : MaterialTemplateBase(std::move(D)) {}
+
+    void initialize(
+        rhi::RDevice& Device,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts,
+        uint32_t MaterialSetIndex)
+    {
+        buildMaterialSetLayout(Device);
+        buildPipelineLayout(Device, FrameLayout, ExtraLayouts, MaterialSetIndex);
+        buildParameterLookup();
+        createPipeline(Device);
+    }
+
+    void createPipeline(rhi::RDevice& Device) override
+    {
+        std::shared_ptr<rhi::RShader> CS;
+        if (Descriptor.Shaders.Compute) CS = createShader(Device, *Descriptor.Shaders.Compute);
+
+        rhi::ComputePipelineDescriptor CP {
+            .Layout = PipelineLayout,
+            .Compute = { .Shader = CS },
+            .Compile = { .Flags = Descriptor.CompileFlags },
+            .DebugName = Descriptor.Name
+        };
+
+        Pipeline = Device.createComputePipeline(CP);
+    }
+};
+
+class RayTracingMaterialTemplate : public MaterialTemplateBase
+{
+public:
+    static std::shared_ptr<RayTracingMaterialTemplate> create(
+        rhi::RDevice& Device,
+        MaterialTemplateDescriptor Desc,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts = {},
+        uint32_t MaterialSetIndex = 1)
+    {
+        auto Tmpl = std::shared_ptr<RayTracingMaterialTemplate>(
+            new RayTracingMaterialTemplate(std::move(Desc)));
+        Tmpl->initialize(Device, FrameLayout, ExtraLayouts, MaterialSetIndex);
+        return Tmpl;
+    }
+
+    [[nodiscard]] rhi::EPipelineType getPipelineType() const noexcept override
+    {
+        return rhi::EPipelineType::RayTracing;
+    }
+
+private:
+    explicit RayTracingMaterialTemplate(MaterialTemplateDescriptor D)
+        : MaterialTemplateBase(std::move(D)) {}
+
+    void initialize(
+        rhi::RDevice& Device,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts,
+        uint32_t MaterialSetIndex)
+    {
+        buildMaterialSetLayout(Device);
+        buildPipelineLayout(Device, FrameLayout, ExtraLayouts, MaterialSetIndex);
+        buildParameterLookup();
+        createPipeline(Device);
+    }
+
+    void createPipeline(rhi::RDevice& Device) override
+    {
+        std::vector<rhi::PipelineShaderStage> Stages;
+
+        auto addStage = [&](const std::optional<rhi::ShaderDescriptor>& S) {
+            if (S) Stages.push_back({ .Shader = createShader(Device, *S) });
+        };
+
+        addStage(Descriptor.Shaders.RayGeneration);
+        addStage(Descriptor.Shaders.Miss);
+        addStage(Descriptor.Shaders.ClosestHit);
+        addStage(Descriptor.Shaders.AnyHit);
+        addStage(Descriptor.Shaders.Intersection);
+        addStage(Descriptor.Shaders.Callable);
+
+        rhi::RayTracingPipelineDescriptor RT {
+            .Layout = PipelineLayout,
+            .Stages = std::move(Stages),
+            .Groups = Descriptor.ShaderGroups,
+            .MaxRecursionDepth = Descriptor.MaxRecursionDepth,
+            .Compile = { .Flags = Descriptor.CompileFlags },
+            .DebugName = Descriptor.Name
+        };
+
+        Pipeline = Device.createRayTracingPipeline(RT);
+    }
+};
+
+class DynamicUniformRing
+{
+public:
+    void initialize(rhi::RDevice& Device, uint32_t SlotSize, uint32_t SlotCount, uint32_t FramesInFlight)
+    {
+        const uint64_t Alignment = Device.getLimits().MinUniformBufferOffsetAlignment;
+        SlotSizeAligned = (uint32_t)alignUp(SlotSize, Alignment);
+        SlotsPerFrame = SlotCount;
+
+        Buffer = Device.createBuffer({
+            .Size = (rhi::DeviceSizeType)SlotSizeAligned * SlotCount * FramesInFlight,
+            .Usage = rhi::EBufferUsage_t::Uniform,
+            .MemoryUsage = rhi::EMemoryUsage::CPUToGPU,
+            .MemoryProperty = rhi::EMemoryProperty_t::HostVisible
+                            | rhi::EMemoryProperty_t::HostCoherent,
+            .PersistentlyMapped = true,
+            .DebugName = "MaterialDynamicUBO"
+        });
+    }
+
+    void beginFrame(uint32_t FrameIndex)
+    {
+        CurrentFrameBase = (uint64_t)FrameIndex * SlotsPerFrame * SlotSizeAligned;
+        Cursor = 0;
+    }
+
+    [[nodiscard]] uint32_t allocate() {
+        uint32_t Off = (uint32_t)(CurrentFrameBase + Cursor);
+        Cursor += SlotSizeAligned;
+        return Off;
+    }
+
+    [[nodiscard]] const std::shared_ptr<rhi::RBuffer>& getBuffer() const noexcept { return Buffer; }
+
+private:
+    static uint64_t alignUp(uint64_t V, uint64_t A) { return (V + A - 1) / A * A; }
+
+    std::shared_ptr<rhi::RBuffer> Buffer;
+    uint32_t SlotSizeAligned { 0 };
+    uint32_t SlotsPerFrame { 0 };
+    uint64_t CurrentFrameBase { 0 };
+    uint64_t Cursor { 0 };
+};
+
+
+class MaterialSystem
+{
+public:
+    explicit MaterialSystem(rhi::RDevice& InDevice) : Device(InDevice) {}
+
+    // ---- 模板注册 ----
+    std::shared_ptr<MaterialTemplateBase> registerTemplate(
+        const MaterialTemplateDescriptor& Desc,
+        const std::shared_ptr<rhi::RBindGroupLayout>& FrameLayout,
+        std::span<const std::shared_ptr<rhi::RBindGroupLayout>> ExtraLayouts = {})
+    {
+        std::shared_ptr<MaterialTemplateBase> Tmpl;
+
+        if (Desc.Shaders.Compute)
+            Tmpl = ComputeMaterialTemplate::create(Device, Desc, FrameLayout, ExtraLayouts);
+        else if (Desc.Shaders.RayGeneration)
+            Tmpl = RayTracingMaterialTemplate::create(Device, Desc, FrameLayout, ExtraLayouts);
+        else
+            Tmpl = GraphicsMaterialTemplate::create(Device, Desc, FrameLayout, ExtraLayouts);
+
+        Templates[Desc.Name] = Tmpl;
+        return Tmpl;
+    }
+
+    [[nodiscard]] std::shared_ptr<MaterialTemplateBase> findTemplate(std::string_view Name) const
+    {
+        auto it = Templates.find(std::string(Name));
+        return it != Templates.end() ? it->second : nullptr;
+    }
+
+    // ---- 实例创建 ----
+    std::shared_ptr<MaterialInstanceBase> createInstance(std::string_view TemplateName)
+    {
+        auto Tmpl = findTemplate(TemplateName);
+        if (!Tmpl) return nullptr;
+        return std::make_shared<MaterialInstanceBase>(Tmpl);
+    }
+
+    std::shared_ptr<MaterialInstanceBase> createInstance(
+        std::shared_ptr<MaterialTemplateBase> Tmpl)
+    {
+        if (!Tmpl) return nullptr;
+        return std::make_shared<MaterialInstanceBase>(std::move(Tmpl));
+    }
+
+    // ---- 命名实例缓存 ----
+    std::shared_ptr<MaterialInstanceBase> getOrCreateNamed(
+        std::string_view TemplateName, std::string_view InstanceName)
+    {
+        auto Key = std::string(InstanceName);
+        auto it = NamedInstances.find(Key);
+        if (it != NamedInstances.end()) return it->second;
+
+        auto Inst = createInstance(TemplateName);
+        if (Inst) NamedInstances[Key] = Inst;
+        return Inst;
+    }
+
+    [[nodiscard]] size_t getTemplateCount() const noexcept { return Templates.size(); }
+
+private:
+    rhi::RDevice& Device;
+    std::unordered_map<std::string, std::shared_ptr<MaterialTemplateBase>> Templates;
+    std::unordered_map<std::string, std::shared_ptr<MaterialInstanceBase>> NamedInstances;
 };
 } // namespace renderer
