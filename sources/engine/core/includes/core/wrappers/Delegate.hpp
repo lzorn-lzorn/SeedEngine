@@ -162,7 +162,7 @@ public:
     {
         if (this != std::addressof(Other))
         {
-            // 先复制到临时对象，保证强异常安全。
+            // 先复制到临时对象，保证强异常安全. 
             DelegateStorage Replacement(Other);
 
             reset();
@@ -896,10 +896,10 @@ private:
 
 public:
     /**
-     * 绑定一个由调用方管理生命周期的 callable 左值。
+     * 绑定一个由调用方管理生命周期的 callable 左值. 
      *
-     * 不接受临时对象，也不直接接受函数引用。自由函数应使用
-     * bindStatic<&Function>()。
+     * 不接受临时对象，也不直接接受函数引用. 自由函数应使用
+     * bindStatic<&Function>(). 
      */
     template <typename Callable>
         requires (
@@ -912,7 +912,7 @@ public:
     {
         using callable_type = std::remove_reference_t<Callable>;
 
-        // 函数指针、成员指针可以为空。
+        // 函数指针, 成员指针可以为空. 
         if constexpr (std::is_pointer_v<callable_type> || std::is_member_pointer_v<callable_type>)
         {
             if (InCallable == nullptr)
@@ -1009,9 +1009,9 @@ public:
     }
 
 	/**
-     * 仅为 void Delegate 提供无异常空检查调用。
+     * 仅为 void Delegate 提供无异常空检查调用. 
      *
-     * 返回 true 表示已经调用，false 表示当前为空。
+     * 返回 true 表示已经调用，false 表示当前为空. 
      */
     bool executeIfBound(Args... InArgs) const
         noexcept(IsNoexcept)
@@ -1439,8 +1439,8 @@ public:
     // ------------------------------------------------------------------------
     // Void broadcast
     //
-    // 广播开始后添加的回调，在下一次广播中执行。
-    // 广播期间删除尚未调用的回调，该回调本轮不会执行。
+    // 广播开始后添加的回调，在下一次广播中执行. 
+    // 广播期间删除尚未调用的回调，该回调本轮不会执行. 
     // ------------------------------------------------------------------------
 
     void broadcast(Args... InArgs) const noexcept(IsNoexcept)
@@ -1451,7 +1451,7 @@ public:
         const std::size_t initial_order_size = Order.size();
         for (std::size_t position = 0; position < initial_order_size; ++position)
         {
-            // 必须复制，不能在调用回调时持有 vector 元素引用。
+            // 必须复制，不能在调用回调时持有 vector 元素引用. 
             const OrderedSlot entry = Order[position];
 
             if (isActive(entry.Index, entry.Generation))
@@ -1461,12 +1461,12 @@ public:
         }
     }
 
-    // 捕获每个回调的异常并继续广播。
+    // 捕获每个回调的异常并继续广播. 
     //
     // ErrorHandler 签名：
     //     void(DelegateHandle, std::exception_ptr)
     //
-    // 仅为可抛异常签名提供；noexcept 事件不需要该接口。
+    // 仅为可抛异常签名提供；noexcept 事件不需要该接口. 
     template <typename ErrorHandler>
         requires (std::is_void_v<RetType>
             && !IsNoexcept
@@ -1503,8 +1503,8 @@ public:
     // ------------------------------------------------------------------------
     // Non-void result visitation
     //
-    // Visitor 返回 void：访问所有结果。
-    // Visitor 返回 bool：返回 false 时停止遍历。
+    // Visitor 返回 void：访问所有结果. 
+    // Visitor 返回 bool：返回 false 时停止遍历. 
     // ------------------------------------------------------------------------
     template <typename Visitor>
         requires (!std::is_void_v<RetType>
@@ -1542,7 +1542,7 @@ public:
         }
     }
 
-    // 性能敏感代码优先使用 visitResults()，以避免 vector 分配。
+    // 性能敏感代码优先使用 visitResults()，以避免 vector 分配. 
     [[nodiscard]]
     std::vector<RetType> collect(Args... InArgs) const
         requires (!std::is_void_v<RetType>
@@ -1568,10 +1568,10 @@ private:
         requires std::is_void_v<RetType>
     {
         // 对值类型 Args：
-        //   execute() 的值参数会为每个监听器分别复制。
+        //   execute() 的值参数会为每个监听器分别复制. 
         //
         // 对引用类型 Args：
-        //   Args& 经过引用折叠后保持原签名引用语义。
+        //   Args& 经过引用折叠后保持原签名引用语义. 
         Callback.execute(InArgs...);
     }
 private:
@@ -1689,7 +1689,7 @@ private:
             RetiredHead = entry.NextFree;
 
             // 到广播完全结束后再销毁回调，保证回调可以安全地
-            // 在执行过程中移除自身。
+            // 在执行过程中移除自身. 
             entry.Callback.reset();
             entry.NextFree = InvalidSlot;
 
@@ -1735,7 +1735,7 @@ private:
 
 private:
     // deque 保证 add 导致扩容时，正在执行的 Callback 对象不会
-    // 像 vector 元素那样被移动和销毁。
+    // 像 vector 元素那样被移动和销毁. 
     mutable std::deque<Slot> Slots;
     mutable std::vector<OrderedSlot> Order;
 
@@ -1769,11 +1769,11 @@ struct MulticastDelegateSelector<RetType(Args...) noexcept, InlineSize, Allocati
 } // namespace details
 
 /**
- * 可复制、拥有 callable 的委托。
+ * 可复制, 拥有 callable 的委托. 
  *
- * - 小 callable 使用 SBO。
- * - 大 callable 或过度对齐 callable 使用堆分配。
- * - callable 必须可复制。
+ * - 小 callable 使用 SBO. 
+ * - 大 callable 或过度对齐 callable 使用堆分配. 
+ * - callable 必须可复制. 
  */
 template <typename Signature, 
 	std::size_t InlineSize = DefaultDelegateInlineSize, 
@@ -1783,10 +1783,10 @@ using Delegate
 	= typename details::DelegateSelector<Signature, true, InlineSize, AllocationPolicy>::storage_type;
 
 /**
- * 仅移动、拥有 callable 的委托。
+ * 仅移动, 拥有 callable 的委托. 
  *
- * - 支持捕获 unique_ptr 等 move-only callable。
- * - 推荐用于任务系统以及 multicast 内部存储。
+ * - 支持捕获 unique_ptr 等 move-only callable. 
+ * - 推荐用于任务系统以及 multicast 内部存储. 
  */
 template <typename Signature, 
 	std::size_t InlineSize = DefaultDelegateInlineSize, 
@@ -1795,23 +1795,23 @@ using UniqueDelegate
 	= typename details::DelegateSelector<Signature, false, InlineSize, AllocationPolicy>::storage_type;
 
 /**
- * 非拥有委托。
+ * 非拥有委托. 
  *
- * - 通常为两个指针大小。
- * - 永不分配。
- * - 从 callable 构造时只接受左值，避免直接绑定临时 lambda。
- * - 调用者必须保证目标生命周期。
+ * - 通常为两个指针大小. 
+ * - 永不分配. 
+ * - 从 callable 构造时只接受左值，避免直接绑定临时 lambda. 
+ * - 调用者必须保证目标生命周期. 
  */
 template <typename Signature>
 using DelegateRef = typename details::DelegateRefSelector<Signature>::storage_type;
 
 /**
- * 顺序、多播委托。
+ * 顺序, 多播委托. 
  *
- * - 内部 Callback 为 unique_delegate。
- * - 支持 move-only lambda。
- * - 支持广播期间添加、移除和清空。
- * - 非线程安全；订阅、退订和广播应在同一所有者线程执行。
+ * - 内部 Callback 为 unique_delegate. 
+ * - 支持 move-only lambda. 
+ * - 支持广播期间添加, 移除和清空. 
+ * - 非线程安全；订阅, 退订和广播应在同一所有者线程执行. 
  */
 template <typename Signature, 
 	std::size_t InlineSize = DefaultDelegateInlineSize, 
@@ -1819,7 +1819,7 @@ template <typename Signature,
 using MulticastDelegate =
     typename details::MulticastDelegateSelector<Signature, InlineSize, AllocationPolicy>::storage_type;
 
-// 无 SBO 便利别名。捕获 callable 总是进入堆分配。
+// 无 SBO 便利别名. 捕获 callable 总是进入堆分配. 
 template <typename Signature>
 using HeapDelegate = Delegate<Signature, 0>;
 

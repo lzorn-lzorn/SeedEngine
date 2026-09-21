@@ -70,10 +70,10 @@ public:
         return Context->familyIndex(Type);
     }
 public:
-    std::shared_ptr<RBuffer> createBuffer(const BufferDescriptor& Desc) override;
+    std::shared_ptr<RBuffer> createBuffer(const RBuffer::Descriptor_t& Desc) override;
     std::shared_ptr<RImage> createImage(const RImage::Descriptor_t& Desc) override;
     std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) override;
-    std::shared_ptr<RSampler> createSampler(const SamplerDescriptor& Desc = {}) override;
+    std::shared_ptr<RSampler> createSampler(const RSampler::Descriptor_t& Desc = {}) override;
     std::shared_ptr<RShader> createShader(const ShaderDescriptor& Desc) override;
     std::shared_ptr<RBindGroupLayout> createBindGroupLayout(
         const BindGroupLayoutDescriptor& Desc) override;

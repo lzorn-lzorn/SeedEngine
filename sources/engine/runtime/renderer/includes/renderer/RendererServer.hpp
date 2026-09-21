@@ -71,13 +71,13 @@ public:
 	void runBindGroupSmokeTest();
 
 	/**
-	 * @brief 录制并提交一帧。回调在默认颜色渲染作用域内执行。
+	 * @brief 录制并提交一帧. 回调在默认颜色渲染作用域内执行. 
 	 *
-	 * 无回调时执行一次清屏；有回调时可绑定 2D/3D Pipeline、BindGroup 和几何数据。
+	 * 无回调时执行一次清屏；有回调时可绑定 2D/3D Pipeline, BindGroup 和几何数据. 
 	 */
 	[[nodiscard]] EFrameStatus renderFrame(const FrameRecorder& Recorder = {});
 
-	/** @brief 通知 Renderer 输出尺寸变化；0 尺寸表示窗口最小化。 */
+	/** @brief 通知 Renderer 输出尺寸变化；0 尺寸表示窗口最小化.  */
 	void resize(uint32_t Width, uint32_t Height);
 
 	/** @brief Recreates only the native surface and swapchain after SurfaceLost. DeviceLost requires full application/RHI resource rebuild. */

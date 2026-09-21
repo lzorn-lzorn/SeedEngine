@@ -5,16 +5,16 @@
 Code Generate.py - 自动生成 C/C++ 预处理器可变参数计数宏
 
 工作原理:
-1. 生成形如 REFLECT__PP_FOREACH_N(f, _1, _2, ..., _N) 的宏，展开为 f(_1) f(_2) ... f(_N)。
-2. 生成 REFLECT__PP_NARGS_IMPL(_1, _2, ..., _N, N, ...) N 宏，用于提取参数个数。
-3. 生成 REFLECT__PP_NARGS(...) 宏，它通过向 NARGS_IMPL 传递递减序列来计算实际参数数量。
-4. 这些宏通常用于实现可变参数宏的遍历和计数，是 C/C++ 预处理器元编程的常见模式。
+1. 生成形如 REFLECT__PP_FOREACH_N(f, _1, _2, ..., _N) 的宏，展开为 f(_1) f(_2) ... f(_N). 
+2. 生成 REFLECT__PP_NARGS_IMPL(_1, _2, ..., _N, N, ...) N 宏，用于提取参数个数. 
+3. 生成 REFLECT__PP_NARGS(...) 宏，它通过向 NARGS_IMPL 传递递减序列来计算实际参数数量. 
+4. 这些宏通常用于实现可变参数宏的遍历和计数，是 C/C++ 预处理器元编程的常见模式. 
 
 本工具可以:
-- 将生成的宏块插入或替换到指定头文件中（基于 BEGIN/END 标记）。
-- 在没有输入文件时自动创建临时输出文件。
-- 支持递归查找输入文件（当仅提供文件名时）。
-- 查找策略:从脚本所在目录向上寻找名为 "PythonTools"（可配置）的目录，然后在其父目录下递归搜索。
+- 将生成的宏块插入或替换到指定头文件中（基于 BEGIN/END 标记）. 
+- 在没有输入文件时自动创建临时输出文件. 
+- 支持递归查找输入文件（当仅提供文件名时）. 
+- 查找策略:从脚本所在目录向上寻找名为 "PythonTools"（可配置）的目录，然后在其父目录下递归搜索. 
 """
 
 import os
@@ -67,10 +67,10 @@ def generate_nargs_impl_macro(prefix, max_n):
 
 def generate_nargs_macro(prefix, impl_prefix, max_n):
     """
-    生成 REFLECT__PP_NARGS(...) 宏，利用递减序列和 NARGS_IMPL 计算参数个数。
+    生成 REFLECT__PP_NARGS(...) 宏，利用递减序列和 NARGS_IMPL 计算参数个数. 
     例如:REFLECT__PP_NARGS(a, b, c) 展开为 REFLECT__PP_NARGS_IMPL(a, b, c, 32,31,...,1)
     由于 NARGS_IMPL 取第 (max_n+1) 个参数（即 N），所以当给定 K 个参数时，
-    第 (K+1) 个参数正好是递减序列中的 K，因此得到参数数量。
+    第 (K+1) 个参数正好是递减序列中的 K，因此得到参数数量. 
     """
     decreasing = ", ".join(str(i) for i in range(max_n, 0, -1))
     return f"#define {prefix}(...) {impl_prefix}(__VA_ARGS__, {decreasing})"
@@ -94,8 +94,8 @@ def generate_all_macros(foreach_prefix, nargs_prefix, nargs_impl_prefix, max_n):
 def find_tools_parent_dir(start_dir, tools_dir_name):
     """
     从 start_dir 开始向上查找名为 tools_dir_name 的目录，
-    找到后返回该目录的父目录（即搜索根目录）。
-    如果找不到，返回 start_dir 的父目录（回退行为）。
+    找到后返回该目录的父目录（即搜索根目录）. 
+    如果找不到，返回 start_dir 的父目录（回退行为）. 
     """
     current = Path(start_dir).resolve()
     while current != current.parent:
@@ -109,8 +109,8 @@ def find_tools_parent_dir(start_dir, tools_dir_name):
 
 def find_file_recursively(filename, root_dir, max_depth):
     """
-    在 root_dir 下递归查找 filename，深度不超过 max_depth。
-    返回第一个匹配的绝对路径，未找到返回 None。
+    在 root_dir 下递归查找 filename，深度不超过 max_depth. 
+    返回第一个匹配的绝对路径，未找到返回 None. 
     """
     root_dir = Path(root_dir).resolve()
     if not root_dir.exists():
@@ -130,8 +130,8 @@ def find_file_recursively(filename, root_dir, max_depth):
 def replace_or_append_content(file_path, new_content):
     """
     在文件中查找 BEGIN_MARKER 和 END_MARKER 对:
-    - 如果找到完整的一对，则替换之间的内容。
-    - 否则将新内容追加到文件末尾。
+    - 如果找到完整的一对，则替换之间的内容. 
+    - 否则将新内容追加到文件末尾. 
     """
     file_path = Path(file_path)
     with open(file_path, "r", encoding="utf-8") as f:
@@ -178,7 +178,7 @@ def get_next_temp_filename(output_dir):
 # ======================= 主程序 =======================
 def main():
     parser = argparse.ArgumentParser(
-        description="生成 C/C++ 预处理器宏，用于可变参数个数统计和遍历。",
+        description="生成 C/C++ 预处理器宏，用于可变参数个数统计和遍历. ",
         epilog="示例:\n"
                "  python MacroArgsNum.py                      # 生成默认配置，输出到 output/__Temp_Output_1.h\n"
                "  python MacroArgsNum.py --max 64             # 最大支持 64 个参数\n"
@@ -198,7 +198,7 @@ def main():
                         help=f"NARGS_IMPL 宏前缀（默认 {DEFAULT_NARGS_IMPL_PREFIX}）")
     parser.add_argument("--tools-dir", default=DEFAULT_TOOLS_DIR_NAME,
                         help=f"向上查找的目录名，在其父目录下搜索输入文件（默认 {DEFAULT_TOOLS_DIR_NAME}）")
-    parser.add_argument("--input", "-i", help="输入文件名。若仅为文件名，则按策略递归查找；否则视为路径")
+    parser.add_argument("--input", "-i", help="输入文件名. 若仅为文件名，则按策略递归查找；否则视为路径")
     parser.add_argument("--output", "-o", help="输出文件（默认覆盖输入文件或自动生成临时文件）")
     parser.add_argument("--depth", type=int, default=DEFAULT_DEPTH,
                         help=f"递归搜索深度（默认 {DEFAULT_DEPTH}）")

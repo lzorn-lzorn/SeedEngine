@@ -8,7 +8,7 @@
 namespace rhi
 {
 
-VulkanSampler::VulkanSampler(VulkanDevice& InDevice, const SamplerDescriptor& Desc)
+VulkanSampler::VulkanSampler(VulkanDevice& InDevice, const RSampler::Descriptor_t& Desc)
 	: Device(&InDevice), Descriptor(Desc)
 {
 	if (Desc.MinLod > Desc.MaxLod)

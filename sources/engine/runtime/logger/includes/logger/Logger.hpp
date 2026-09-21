@@ -181,12 +181,12 @@ public:
 	[[nodiscard]] bool startManually(Config InConfig = DefaultConfig);
 	void stop() noexcept;
 
-	// ManualFramePump 模式下由引擎事件循环每帧调用。
+	// ManualFramePump 模式下由引擎事件循环每帧调用. 
 	[[nodiscard]] bool pumpFrame(
 		std::size_t MaxMessages = DefaultFrameBudgetMessages,
 		std::optional<std::chrono::nanoseconds> TimeBudget = std::nullopt);
 
-	// 消费当前队列并刷新日志文件。
+	// 消费当前队列并刷新日志文件. 
 	void flush();
 
 	void setScreenSink(screen_sink_t Sink);
@@ -300,7 +300,7 @@ public:
 	[[nodiscard]] std::uint64_t getFileErrorCount() const noexcept;
 	[[nodiscard]] bool isRunning() const noexcept;
 
-	// debug::print/println 的无队列、线程安全输出后端。
+	// debug::print/println 的无队列, 线程安全输出后端. 
 	static void writeDebugText(std::string_view Text, bool AppendNewLine) noexcept;
 
 private:

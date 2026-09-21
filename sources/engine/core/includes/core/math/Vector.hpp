@@ -126,7 +126,7 @@ struct Vector
         return Coordinates[3];
     }
 
-    // 兼容旧 API；新代码使用小写访问器。
+    // 兼容旧 API；新代码使用小写访问器. 
     [[nodiscard]] constexpr reference X() noexcept requires (dimensions >= 1) { return x(); }
     [[nodiscard]] constexpr const_reference X() const noexcept requires (dimensions >= 1) { return x(); }
     [[nodiscard]] constexpr reference Y() noexcept requires (dimensions >= 2) { return y(); }
@@ -322,7 +322,7 @@ struct Vector
         return Left[0] * Right[1] - Left[1] * Right[0];
     }
 
-    // 兼容先前公开 API。
+    // 兼容先前公开 API. 
     [[nodiscard]] constexpr value_type Square() const noexcept { return square(); }
     [[nodiscard]] constexpr value_type Dot(const Vector& Other) const noexcept { return dot(Other); }
     [[nodiscard]] float Length() const noexcept { return length(); }

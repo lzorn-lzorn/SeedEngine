@@ -161,11 +161,11 @@ void MaterialInstanceBase::commit(
 
 MaterialSystem::~MaterialSystem()
 {
-    // 池归 HandleManager，不再 clear()。
-    // 这里只清理本系统维护的映射。
+    // 池归 HandleManager，不再 clear(). 
+    // 这里只清理本系统维护的映射. 
     //
     // 注意：调用方需要在销毁 MaterialSystem 之前，先销毁所有实例与模板，
-    //       否则实例析构时访问已销毁的 System 会出问题。
+    //       否则实例析构时访问已销毁的 System 会出问题. 
     TemplateNameToHandle.clear();
     NamedInstances.clear();
     TemplateLayouts.clear();
@@ -302,7 +302,7 @@ bool MaterialSystem::reloadTemplate(
     for (const auto& L : ExtraLayouts) Cache.ExtraLayouts.push_back(L);
     TemplateLayouts[H.Id] = std::move(Cache);
 
-    // 5. 名字映射保持不变（同句柄、同 Generation）
+    // 5. 名字映射保持不变（同句柄, 同 Generation）
     return true;
 }
 

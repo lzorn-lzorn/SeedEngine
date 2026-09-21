@@ -185,7 +185,7 @@ struct StageStorage
 	 *	- Specialization Constant 在 Pipeline 创建阶段确定，可能参与驱动优化；
 	 *	- Push Constant 在 命令记录阶段更新；
 	 *	- Specialization Constant 的变化通常会产生不同 Pipeline；
-	 *	- Push Constant 的值不产生新 Pipeline。
+	 *	- Push Constant 的值不产生新 Pipeline. 
 	 *
 	 *  vk::SpecializationInfo 本身是 Vulkan 对特化常量的整体描述
     */
@@ -195,7 +195,7 @@ struct StageStorage
 	EShaderStage_t Stage { EShaderStage_t::Vertex };
 	bool Finalized { false };
 
-	/** 第一阶段只收集并拥有数据，不创建任何指向成员的 Vulkan 指针视图。 */
+	/** 第一阶段只收集并拥有数据，不创建任何指向成员的 Vulkan 指针视图.  */
 	static StageStorage collect(
 		const PipelineShaderStage& InStage,
 		EShaderStage_t ExpectedStage,
@@ -226,8 +226,8 @@ struct StageStorage
 	}
 
 	/**
-	 * 第二阶段只能在最终容器完成扩容后执行。此时才绑定指向 owning 成员的
-	 * pMapEntries、pData、pName 和 pSpecializationInfo。
+	 * 第二阶段只能在最终容器完成扩容后执行. 此时才绑定指向 owning 成员的
+	 * pMapEntries, pData, pName 和 pSpecializationInfo. 
 	 */
 	void finalize()
 	{
@@ -591,7 +591,7 @@ void buildShaderStages(
 			OutState.StageStorageList.emplace_back(
 				StageStorage::collect(*stage, expected_stage, Device));
 
-	// StageStorageList 的容量从此不再变化，finalize() 建立的所有内部指针保持稳定。
+	// StageStorageList 的容量从此不再变化，finalize() 建立的所有内部指针保持稳定. 
 	OutState.ShaderStages.reserve(stage_count);
 	for (auto& storage : OutState.StageStorageList)
 	{

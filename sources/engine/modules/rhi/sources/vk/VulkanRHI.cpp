@@ -666,8 +666,8 @@ void VulkanRHI::createLogicalDevice()
         : enabled_ray_tracing_head;
 	enabled_vertex_input.pNext = enabled_ray_tracing_head;
 
-    // Pipeline 后端只在对应能力实际启用后对外报告支持。这里按硬件支持启用
-    // 常用固定功能；扩展动态状态、Mesh 和 Ray Tracing 仍由后续扩展链单独管理。
+    // Pipeline 后端只在对应能力实际启用后对外报告支持. 这里按硬件支持启用
+    // 常用固定功能；扩展动态状态, Mesh 和 Ray Tracing 仍由后续扩展链单独管理. 
     vk::PhysicalDeviceFeatures enabled_features{};
     enabled_features.geometryShader = supported_features.features.geometryShader;
     enabled_features.tessellationShader = supported_features.features.tessellationShader;

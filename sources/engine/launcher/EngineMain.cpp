@@ -22,7 +22,7 @@ int EngineMain(int argc, char** argv)
 		// 初始化引擎
 		GSeedEngine.preinitialize();
 
-		// 初始化通用窗口系统；当前工厂选择 SDL3 实现。
+		// 初始化通用窗口系统；当前工厂选择 SDL3 实现. 
 		auto generic_application = app::createGenericApplication();
 		ui::WindowDescriptor window_descriptor {
 			.Title = "SeedEngine RHI Test",
@@ -39,7 +39,7 @@ int EngineMain(int argc, char** argv)
 		ui::GenericWindowPointer generic_window = generic_application->makeWindow(window_descriptor);
 		generic_window->show();
 
-		// UI 只依赖 Renderer；后端创建、反射与 BindGroup 均由下层管理。
+		// UI 只依赖 Renderer；后端创建, 反射与 BindGroup 均由下层管理. 
 		auto& renderer = runtime::renderer::RendererServer::self();
 		renderer.initialize(rhi::ESupportedBackendAPI::Vulkan, generic_window);
 		if (!renderer.isInitialized())

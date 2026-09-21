@@ -54,7 +54,7 @@ private:
 
 	VulkanDevice* Device = nullptr;
 	std::shared_ptr<DeviceMemory> Memory;
-	// Memory 必须先声明：成员按逆序析构，确保自有 VkImage 先销毁，再释放绑定内存。
+	// Memory 必须先声明：成员按逆序析构，确保自有 VkImage 先销毁，再释放绑定内存. 
 	std::variant<vk::UniqueImage, vk::Image> Image;
 };
 

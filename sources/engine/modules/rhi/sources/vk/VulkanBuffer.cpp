@@ -10,11 +10,7 @@
 namespace rhi
 {
 
-VulkanBuffer::VulkanBuffer(
-	VulkanDevice& InDevice,
-	BufferDescriptor Desc,
-	std::shared_ptr<DeviceMemory> InMemory,
-	vk::UniqueBuffer InBuffer)
+VulkanBuffer::VulkanBuffer(VulkanDevice& InDevice, RBuffer::Descriptor_t Desc, std::shared_ptr<DeviceMemory> InMemory, vk::UniqueBuffer InBuffer)
 	: Device(&InDevice)
 	, Descriptor(std::move(Desc))
 	, Memory(std::move(InMemory))
@@ -24,7 +20,7 @@ VulkanBuffer::VulkanBuffer(
 
 std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
 	VulkanDevice& Device,
-	const BufferDescriptor& Desc)
+	const RBuffer::Descriptor_t& Desc)
 {
 	if (Desc.Size == 0)
 		throw std::invalid_argument("Vulkan buffer size must be non-zero.");
@@ -75,7 +71,7 @@ std::shared_ptr<VulkanBuffer> VulkanBuffer::create(
 		.RequiresDedicatedAllocation = dedicated_requirements.requiresDedicatedAllocation == VK_TRUE
 	};
 	auto required_properties = Desc.MemoryProperty;
-	// BufferDescriptor defaults to GPU-local memory. An explicit CPU allocation intent
+	// RBuffer::Descriptor_t defaults to GPU-local memory. An explicit CPU allocation intent
 	// replaces that default unless the caller supplied additional required properties.
 	if (memory_usage_is_host_visible &&
 		required_properties == EMemoryProperty(EMemoryProperty_t::DeviceLocal))

@@ -22,10 +22,10 @@ struct VulkanSurfaceState final
 };
 
 /**
- * @brief Vulkan 后端共享所有权根。
+ * @brief Vulkan 后端共享所有权根. 
  *
- * RHI、Device、Queue 与 Swapchain 共享该对象，保证所有子对象销毁前
- * VkDevice、Surface 与 Instance 始终有效。
+ * RHI, Device, Queue 与 Swapchain 共享该对象，保证所有子对象销毁前
+ * VkDevice, Surface 与 Instance 始终有效. 
  */
 struct VulkanContext final
 {

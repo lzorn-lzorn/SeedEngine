@@ -12,7 +12,7 @@ namespace rhi
 
 class VulkanDevice;
 
-/** Vulkan SPIR-V Shader Module。字节码与入口点在创建后不可变。 */
+/** Vulkan SPIR-V Shader Module. 字节码与入口点在创建后不可变.  */
 class VulkanShader final : public RShader
 {
 public:
@@ -104,7 +104,7 @@ private:
 	vk::UniquePipelineLayout PipelineLayout;
 };
 
-/** VkPipelineCache 需要外部同步，因此 merge/serialize 在对象内部串行化。 */
+/** VkPipelineCache 需要外部同步，因此 merge/serialize 在对象内部串行化.  */
 class VulkanPipelineCache final : public RPipelineCache
 {
 public:

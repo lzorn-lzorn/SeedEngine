@@ -1,11 +1,11 @@
 这个委托库提供了四类委托，适合不同场景：
 
-- `Delegate`：可复制、拥有 callable，适合策略、回调存储。
-- `UniqueDelegate`：仅移动、拥有 callable，适合捕获 `unique_ptr`、`promise` 等 move-only 对象的任务系统。
-- `DelegateRef`：非拥有、引用外部 callable，适合生命周期由外部保证的场合（注意当前实现中构造函数是 `private`，若直接使用需要调整访问控制）。
-- `MulticastDelegate`：多播委托，支持延迟增删、异常隔离、生命周期绑定、结果收集。
+- `Delegate`：可复制, 拥有 callable，适合策略, 回调存储. 
+- `UniqueDelegate`：仅移动, 拥有 callable，适合捕获 `unique_ptr`, `promise` 等 move-only 对象的任务系统. 
+- `DelegateRef`：非拥有, 引用外部 callable，适合生命周期由外部保证的场合（注意当前实现中构造函数是 `private`，若直接使用需要调整访问控制）. 
+- `MulticastDelegate`：多播委托，支持延迟增删, 异常隔离, 生命周期绑定, 结果收集. 
 
-下面给出几个相对复杂的案例，覆盖多播广播、异常处理、生命周期管理、结果聚合和 move-only 任务。
+下面给出几个相对复杂的案例，覆盖多播广播, 异常处理, 生命周期管理, 结果聚合和 move-only 任务. 
 
 ---
 
@@ -16,7 +16,7 @@
 - 广播开始时，当前订阅列表的快照被固定；
 - 广播期间 **新添加** 的回调不会在本轮执行；
 - 广播期间 **被移除** 的尚未执行的回调，本轮不会执行；
-- 回调对象真正的析构发生在广播完全结束后，因此回调可以在执行过程中安全地移除自己。
+- 回调对象真正的析构发生在广播完全结束后，因此回调可以在执行过程中安全地移除自己. 
 
 ### 示例代码
 
@@ -117,13 +117,13 @@ int main() {
 ```
 
 **要点**：  
-`h2` 在 `h1` 中被移除，因为 `h2` 尚未执行，所以本轮不会触发；新添加的 `late` 在下一轮才执行。
+`h2` 在 `h1` 中被移除，因为 `h2` 尚未执行，所以本轮不会触发；新添加的 `late` 在下一轮才执行. 
 
 ---
 
 ## 2. 异常隔离：`broadcastGuarded`
 
-对于非 `noexcept` 的多播委托，`broadcast` 会在第一个异常处中断。若希望每个回调的异常都被捕获并继续广播，可以使用 `broadcastGuarded`。它的错误处理器签名必须为：
+对于非 `noexcept` 的多播委托，`broadcast` 会在第一个异常处中断. 若希望每个回调的异常都被捕获并继续广播，可以使用 `broadcastGuarded`. 它的错误处理器签名必须为：
 
 ```cpp
 void(DelegateHandle, std::exception_ptr)
@@ -175,7 +175,7 @@ int main() {
 }
 ```
 
-**注意**：`broadcastGuarded` 只在非 `noexcept` 签名下可用。若签名是 `void(const Event&) noexcept`，回调不能抛出异常，也不会有该接口。
+**注意**：`broadcastGuarded` 只在非 `noexcept` 签名下可用. 若签名是 `void(const Event&) noexcept`，回调不能抛出异常，也不会有该接口. 
 
 ---
 
@@ -185,7 +185,7 @@ int main() {
 
 - `addShared`：委托持有 `shared_ptr`，保证订阅者存活；
 - `addWeak`：仅持有 `weak_ptr`，当订阅者已销毁时静默跳过；
-- `addWeakOr`：当订阅者已销毁时调用 fallback（仅适用于非 `void` 返回类型）。
+- `addWeakOr`：当订阅者已销毁时调用 fallback（仅适用于非 `void` 返回类型）. 
 
 ### 示例代码
 
@@ -258,7 +258,7 @@ int main() {
 **要点**：  
 - `addShared` 会延长订阅者生命周期，可能导致对象在事件系统中存活过久；  
 - `addWeak` 更适合观测者模式，避免悬挂；  
-- `addWeakOr` 为需要返回值的场景提供了降级处理。
+- `addWeakOr` 为需要返回值的场景提供了降级处理. 
 
 ---
 
@@ -267,7 +267,7 @@ int main() {
 对于非 `void` 返回类型的多播委托，不能直接 `broadcast`，而应使用：
 
 - `visitResults(visitor, args...)`：逐个访问结果，`Visitor` 返回 `bool` 时可实现短路；
-- `collect(args...)`：将所有结果收集到 `std::vector<RetType>`。
+- `collect(args...)`：将所有结果收集到 `std::vector<RetType>`. 
 
 ### 示例：校验链（短路）
 
@@ -329,13 +329,13 @@ for (int s : scores) {
 }
 ```
 
-**注意**：`collect` 要求返回类型不是引用且可移动构造，并且参数必须满足多路复用条件（引用或可复制构造）。
+**注意**：`collect` 要求返回类型不是引用且可移动构造，并且参数必须满足多路复用条件（引用或可复制构造）. 
 
 ---
 
 ## 5. Move-only 任务队列：`UniqueDelegate`
 
-`UniqueDelegate` 可以持有 move-only callable，例如捕获了 `unique_ptr` 的 lambda。这非常适合任务队列、异步回调等场景。
+`UniqueDelegate` 可以持有 move-only callable，例如捕获了 `unique_ptr` 的 lambda. 这非常适合任务队列, 异步回调等场景. 
 
 ### 示例代码
 
@@ -385,13 +385,13 @@ int main() {
 }
 ```
 
-**要点**：`UniqueDelegate` 不可复制，但可以移动，因此可以安全存入 `std::vector` 并转移所有权。它的内部实现保证了 move-only lambda 的构造和销毁。
+**要点**：`UniqueDelegate` 不可复制，但可以移动，因此可以安全存入 `std::vector` 并转移所有权. 它的内部实现保证了 move-only lambda 的构造和销毁. 
 
 ---
 
 ## 6. 可复制 `Delegate` 作为策略对象
 
-`Delegate` 具备复制语义，适合作为可复制的策略、回调配置。小 callable 使用内联存储，大对象自动堆分配。
+`Delegate` 具备复制语义，适合作为可复制的策略, 回调配置. 小 callable 使用内联存储，大对象自动堆分配. 
 
 ### 示例代码
 
@@ -429,7 +429,7 @@ int main() {
 }
 ```
 
-**要点**：复制 `Delegate` 会深拷贝绑定的 callable（如果 callable 可复制）。这在需要保存不同配置或历史版本时非常有用。
+**要点**：复制 `Delegate` 会深拷贝绑定的 callable（如果 callable 可复制）. 这在需要保存不同配置或历史版本时非常有用. 
 
 ---
 
@@ -437,23 +437,23 @@ int main() {
 
 1. **生命周期**：  
    - `DelegateRef` 不拥有目标，必须保证目标在调用期间存活；  
-   - 多播委托中的 `addShared` 会延长生命周期，`addWeak` 则不会。
+   - 多播委托中的 `addShared` 会延长生命周期，`addWeak` 则不会. 
 
 2. **广播期间的增删**：  
    - 新添加的回调不会在本轮执行；  
    - 被移除但尚未执行的回调不会执行；  
-   - 回调对象的真正销毁在广播结束后。
+   - 回调对象的真正销毁在广播结束后. 
 
 3. **异常与 `noexcept`**：  
    - 非 `noexcept` 多播委托可以用 `broadcastGuarded` 隔离异常；  
-   - `noexcept` 签名下不允许抛出，也不会生成该接口。
+   - `noexcept` 签名下不允许抛出，也不会生成该接口. 
 
 4. **参数多路复用**：  
    - 多播广播要求参数能被多次传递，因此参数必须是引用或可复制构造；  
-   - 右值引用或 move-only 参数无法直接用于多播。
+   - 右值引用或 move-only 参数无法直接用于多播. 
 
 5. **成员函数绑定**：  
-   目前 `addRaw` / `addShared` / `addWeak` 等的实现要求绑定的成员函数为非 `const`（因为内部使用 `ClassType*` 进行可调用性检查）。如果需要绑定 `const` 成员函数，可以先用 lambda 包装：
+   目前 `addRaw` / `addShared` / `addWeak` 等的实现要求绑定的成员函数为非 `const`（因为内部使用 `ClassType*` 进行可调用性检查）. 如果需要绑定 `const` 成员函数，可以先用 lambda 包装：
 
    ```cpp
    auto sp = std::make_shared<Session>(1);
@@ -462,4 +462,4 @@ int main() {
    });
    ```
 
-以上案例覆盖了该委托库最复杂、最实用的几个场景，你可以根据实际需求组合使用。
+以上案例覆盖了该委托库最复杂, 最实用的几个场景，你可以根据实际需求组合使用. 

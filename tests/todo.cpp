@@ -60,7 +60,7 @@ int main()
 	buffer_usage.set(EBufferUsage_t::DeviceAddress);
 	assert(buffer_usage.has(EBufferUsage_t::DeviceAddress));
 
-	const BufferDescriptor modern_buffer;
+	const RBuffer::Descriptor_t modern_buffer;
 	assert(modern_buffer.MemoryUsage == EMemoryUsage::Auto);
 	assert(!modern_buffer.DedicatedAllocation);
 	assert(!modern_buffer.PersistentlyMapped);

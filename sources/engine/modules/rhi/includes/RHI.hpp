@@ -86,7 +86,7 @@ enum class EFormat : uint32_t
 	Undefined,
 	// 每通道 8 位无符号归一化整数, 取值范围 [0,1], 存储时直接映射, 适用于普通颜色纹理(如漫反射贴图),无 HDR 要求的渲染目标
 	RGBA8_UNorm,
-	// 与 RGBA8_UNorm 相同位宽, 但纹理采样时 GPU 会自动将数据从 sRGB 色彩空间转换到线性空间, 写入时自动反向转换。适合用于最终输出到显示器的交换链, 以及存储人眼感知颜色的纹理(如照片、UI)
+	// 与 RGBA8_UNorm 相同位宽, 但纹理采样时 GPU 会自动将数据从 sRGB 色彩空间转换到线性空间, 写入时自动反向转换. 适合用于最终输出到显示器的交换链, 以及存储人眼感知颜色的纹理(如照片、UI)
 	RGBA8_sRGB,
 	// 与 RGBA8_UNorm 类似, 但通道顺序为 B,G,R,A. 这是许多平台(尤其是 Windows)交换链的默认格式, 因为桌面合成器使用这种通道顺序
 	BGRA8_UNorm,
@@ -422,10 +422,10 @@ enum class EPipelineType
 };
 
 /**
- * @brief Pipeline 创建策略。
+ * @brief Pipeline 创建策略. 
  *
- * 这些标志只表达跨后端的编译意图。Vulkan Graphics Pipeline Library、
- * D3D12 Pipeline Library 和 Metal Binary Archive 等后端优化不会直接暴露到 RHI。
+ * 这些标志只表达跨后端的编译意图. Vulkan Graphics Pipeline Library、
+ * D3D12 Pipeline Library 和 Metal Binary Archive 等后端优化不会直接暴露到 RHI. 
  */
 enum class EPipelineCompileFlag_t : uint32_t
 {
@@ -642,10 +642,10 @@ enum class EVertexInputRate : uint32_t
 };
 
 /**
- * @brief 可由命令列表在 Pipeline 创建后覆盖的状态。
+ * @brief 可由命令列表在 Pipeline 创建后覆盖的状态. 
  *
- * 动态状态不会参与 Pipeline 语义缓存键。请求后端不支持的动态状态时，
- * Pipeline 创建必须失败，而不能静默退化为静态状态。
+ * 动态状态不会参与 Pipeline 语义缓存键. 请求后端不支持的动态状态时，
+ * Pipeline 创建必须失败，而不能静默退化为静态状态. 
  */
 enum class EDynamicState_t : uint64_t
 {
@@ -984,28 +984,62 @@ public:
 	DeviceMemory(DeviceMemory&&) = default;
 	DeviceMemory& operator=(DeviceMemory&&) = default;
 
-	/** @brief 映射可见内存区间。 @param Offset 分配内字节偏移。 @param Size 字节数；0 表示剩余区间。 @return 映射地址。 */
+	/** 
+     * @brief 映射可见内存区间 
+     * @param Offset 分配内字节偏移
+     * @param Size 字节数；0 表示剩余区间.  
+     * @return 映射地址 
+     */
 	virtual void* map(DeviceSizeType Offset = 0, DeviceSizeType Size = 0) = 0;
-	/** @brief 结束调用方对当前映射的访问。 */
+	
+    /** 
+     * @brief 结束调用方对当前映射的访问
+     */
 	virtual void unmap() = 0;
 
 	// note: 当内存被映射到主机地址空间(通过 map)后, CPU 和 GPU 对同一块内存的访问并不是自动同步的, 
     // note: 尤其是对于非主机一致性(non-coherent)内存
-	/** @brief Makes CPU writes visible to device accesses for a non-coherent mapped range. @param Offset Allocation-relative byte offset. @param Size Byte count; zero means the remaining allocation. */
+	/** 
+     * @brief Makes CPU writes visible to device accesses for a non-coherent mapped range.
+     * @param Offset Allocation-relative byte offset.
+     * @param Size Byte count; zero means the remaining allocation.
+     */
 	virtual void flush(DeviceSizeType Offset, DeviceSizeType Size) = 0;
-	/** @brief Makes device writes visible to CPU reads for a non-coherent mapped range. @param Offset Allocation-relative byte offset. @param Size Byte count; zero means the remaining allocation. */
+	
+    /** 
+     * @brief Makes device writes visible to CPU reads for a non-coherent mapped range.
+     * @param Offset Allocation-relative byte offset.
+     * @param Size Byte count; zero means the remaining allocation.
+     */
 	virtual void invalidate(DeviceSizeType Offset, DeviceSizeType Size) = 0;
-	/** @brief 释放或归还底层分配；调用方必须先证明 GPU 不再使用它。 */
+	
+    /** 
+     * @brief 释放或归还底层分配; 调用方必须先证明 GPU 不再使用它 
+     */
 	virtual void release() = 0;
 
-	/** @brief 返回创建该分配所满足的要求。 @return 大小、对齐和内存类型约束。 */
+	/** 
+     * @brief 返回创建该分配所满足的要求
+     * @return 大小、对齐和内存类型约束 
+     */
 	virtual MemoryRequirements getMemoryRequirements() const = 0;
-	/** @brief 返回实际内存属性。 @return 可见性、一致性及局部性标志。 */
+
+	/** 
+     * @brief 返回实际内存属性.  
+     * @return 可见性、一致性及局部性标志.  
+     */
 	virtual EMemoryProperty getMemoryProperty() const = 0;
-	/** @brief Returns modern allocation metadata when exposed by the backend. @return Metadata, or std::nullopt for legacy allocations. */
+	
+    /** 
+     * @brief Returns modern allocation metadata when exposed by the backend. 
+     * @return Metadata, or std::nullopt for legacy allocations. 
+     */
 	[[nodiscard]] virtual std::optional<MemoryAllocationInfo> getAllocationInfo() const { return std::nullopt; }
 
-	/** @brief 查询包装器的所有权状态。 @return 当前状态。 */
+	/** 
+     * @brief 查询包装器的所有权状态.  
+     * @return 当前状态.  
+     */
 	EState getState() const { return OwnershipState; }
 
 protected:
@@ -1016,98 +1050,146 @@ protected:
 class DeviceMemoryAllocator
 {
 public:
-	/** @brief Destroys an allocation strategy after all allocations returned by it are released. */
+	/** 
+     * @brief Destroys an allocation strategy after all allocations returned by it are released. 
+     */
 	virtual ~DeviceMemoryAllocator() = default;
 
-	/** @brief 按资源要求和必需属性分配设备内存。 @param Requirements 大小、对齐和类型位。 @param Property 必需属性。 @return 分配对象，失败时为空或抛出异常。 */
+	/** 
+     * @brief 按资源要求和必需属性分配设备内存
+     * @param Requirements 大小、对齐和类型位 
+     * @param Property 必需属性 
+     * @return 分配对象, 失败时为空或抛出异常.  
+     */
 	virtual std::shared_ptr<DeviceMemory> allocateMemory(MemoryRequirements Requirements, EMemoryProperty Property) = 0;
-	/** @brief 归还不再被 GPU 使用的分配。 @param Memory 待释放对象；空值为无操作。 */
+
+	/** 
+     * @brief 归还不再被 GPU 使用的分配 
+     * @param Memory 待释放对象；空值为无操作 
+     */
 	virtual void freeMemory(std::shared_ptr<DeviceMemory> Memory) = 0;
 };
 
-/** @brief GPU Buffer 的不可变创建描述。 */
-struct BufferDescriptor
-{
-	DeviceSizeType Size { 0 };
-	EBufferUsage Usage {};
-	EMemoryUsage MemoryUsage { EMemoryUsage::Auto };
-	EMemoryProperty MemoryProperty { EMemoryProperty_t::DeviceLocal };
-	EMemoryProperty PreferredMemoryProperty {};
-	float MemoryPriority { 0.5f };
-	bool DedicatedAllocation { false };
-	bool PersistentlyMapped { false };
-	std::string DebugName;
-};
-
 /**
- * @brief 跨后端 Buffer 资源。
+ * @brief 跨后端 Buffer 资源. 
  *
  * map()/unmap() 只允许用于 HostVisible 内存；频繁更新路径可保持持久映射，
- * 后续上传系统也可以在该接口之上实现 staging/ring allocator。
+ * 后续上传系统也可以在该接口之上实现 staging/ring allocator. 
  */
 class RBuffer
 {
+public:
+    struct Descriptor_t
+    {
+        DeviceSizeType Size { 0 };
+        EBufferUsage Usage {};
+        EMemoryUsage MemoryUsage { EMemoryUsage::Auto };
+        EMemoryProperty MemoryProperty { EMemoryProperty_t::DeviceLocal };
+        EMemoryProperty PreferredMemoryProperty {};
+        float MemoryPriority { 0.5f };
+        bool DedicatedAllocation { false };
+        bool PersistentlyMapped { false };
+        std::string DebugName;
+    };
+
 public:
 	virtual ~RBuffer() = default;
 	RBuffer(const RBuffer&) = delete;
 	RBuffer& operator=(const RBuffer&) = delete;
 
-	/** @brief 返回创建此 Buffer 的设备。 @return 所属设备。 */
+	/** 
+     * @brief 返回创建此 Buffer 的设备 
+     * @return 所属设备 
+     */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 返回不可变创建描述。 @return Buffer 描述。 */
-	[[nodiscard]] virtual const BufferDescriptor& getDescriptor() const noexcept = 0;
-	/** @brief 查询底层对象是否可用。 @return 可用于命令记录时为 true。 */
+	
+    /** 
+     * @brief 返回不可变创建描述
+     * @return Buffer 描述 
+     */
+	[[nodiscard]] virtual const Descriptor_t& getDescriptor() const noexcept = 0;
+	
+    /** 
+     * @brief 查询底层对象是否可用 
+     * @return 可用于命令记录时为 true 
+     */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+
+	/** 
+     * @brief 返回非 owning 后端句柄 
+     * @return 不可用时为 nullptr
+     */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
-	/** @brief Returns the stable GPU virtual address of this buffer when supported and requested. @return Nonzero address, or zero when unsupported, invalid, or missing DeviceAddress usage. */
+	
+    /** 
+     * @brief Returns the stable GPU virtual address of this buffer when supported and requested
+     * @return Nonzero address, or zero when unsupported, invalid, or missing DeviceAddress usage 
+     */
 	[[nodiscard]] virtual DeviceAddress getDeviceAddress() const noexcept { return 0; }
-	/** @brief 映射 HostVisible 区间。 @param Offset Buffer 内字节偏移。 @param Size 字节数；0 表示剩余区间。 @return CPU 地址。 */
+	
+    /** 
+     * @brief 映射 HostVisible 区间 
+     * @param Offset Buffer 内字节偏移 
+     * @param Size 字节数；0 表示剩余区间 
+     * @return CPU 地址 
+     */
 	[[nodiscard]] virtual void* map(DeviceSizeType Offset = 0, DeviceSizeType Size = 0) = 0;
-	/** @brief 结束当前映射访问。 */
+	
+    /** 
+     * @brief 结束当前映射访问 
+     */
 	virtual void unmap() = 0;
-	/** @brief 将非一致内存的 CPU 写入刷新给 GPU。 @param Offset 字节偏移。 @param Size 字节数；0 表示剩余区间。 */
+	
+    /** 
+     * @brief 将非一致内存的 CPU 写入刷新给 GPU 
+     * @param Offset 字节偏移 
+     * @param Size 字节数；0 表示剩余区间 
+     */
 	virtual void flush(DeviceSizeType Offset, DeviceSizeType Size) = 0;
-	/** @brief 使非一致内存的 GPU 写入对 CPU 可见。 @param Offset 字节偏移。 @param Size 字节数；0 表示剩余区间。 */
+	
+    /** 
+     * @brief 使非一致内存的 GPU 写入对 CPU 可见 
+     * @param Offset 字节偏移 
+     * @param Size 字节数；0 表示剩余区间 
+     */
 	virtual void invalidate(DeviceSizeType Offset, DeviceSizeType Size) = 0;
 
 protected:
 	RBuffer() = default;
 };
 
-/** @brief 不可变 Sampler 创建描述。 */
-struct SamplerDescriptor
-{
-	EFilterMode MinFilter { EFilterMode::Linear };
-	EFilterMode MagFilter { EFilterMode::Linear };
-	EFilterMode MipmapFilter { EFilterMode::Linear };
-	ESamplerAddressMode AddressU { ESamplerAddressMode::Repeat };
-	ESamplerAddressMode AddressV { ESamplerAddressMode::Repeat };
-	ESamplerAddressMode AddressW { ESamplerAddressMode::Repeat };
-	float MipLodBias { 0.0f };
-	float MinLod { 0.0f };
-	float MaxLod { 1000.0f };
-	float MaxAnisotropy { 1.0f };
-	bool CompareEnable { false };
-	ECompareOp CompareOperation { ECompareOp::Always };
-	std::string DebugName;
-};
-
 /** @brief Immutable sampling-state wrapper owned by one logical device. */
 class RSampler
-{
+{   
+public:
+    struct Descriptor_t
+    {
+        EFilterMode MinFilter { EFilterMode::Linear };
+        EFilterMode MagFilter { EFilterMode::Linear };
+        EFilterMode MipmapFilter { EFilterMode::Linear };
+        ESamplerAddressMode AddressU { ESamplerAddressMode::Repeat };
+        ESamplerAddressMode AddressV { ESamplerAddressMode::Repeat };
+        ESamplerAddressMode AddressW { ESamplerAddressMode::Repeat };
+        float MipLodBias { 0.0f };
+        float MinLod { 0.0f };
+        float MaxLod { 1000.0f };
+        float MaxAnisotropy { 1.0f };
+        bool CompareEnable { false };
+        ECompareOp CompareOperation { ECompareOp::Always };
+        std::string DebugName;
+    };
 public:
 	virtual ~RSampler() = default;
 	RSampler(const RSampler&) = delete;
 	RSampler& operator=(const RSampler&) = delete;
 
-	/** @brief 返回所属设备。 @return 创建此 Sampler 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 Sampler 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 返回不可变采样描述。 @return 创建描述。 */
-	[[nodiscard]] virtual const SamplerDescriptor& getDescriptor() const noexcept = 0;
-	/** @brief 查询底层采样器是否有效。 @return 有效时为 true。 */
+	/** @brief 返回不可变采样描述.  @return 创建描述.  */
+	[[nodiscard]] virtual const Descriptor_t& getDescriptor() const noexcept = 0;
+	/** @brief 查询底层采样器是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
@@ -1123,13 +1205,13 @@ public:
     {
         std::shared_ptr<RImage> Image;
 
-        // Undefined 表示继承 Image 的格式。
+        // Undefined 表示继承 Image 的格式. 
         EFormat Format { EFormat::Undefined };
 
-        // Auto 表示根据 Image dimension 和 layer 范围推导。
+        // Auto 表示根据 Image dimension 和 layer 范围推导. 
         EImageViewDimension Dimension { EImageViewDimension::Auto };
 
-        // Auto 表示根据最终格式推导 Color/Depth/DepthStencil。
+        // Auto 表示根据最终格式推导 Color/Depth/DepthStencil. 
         EImageAspect Aspect { EImageAspect::Auto };
 
         uint32_t BaseMipLevel { 0 };
@@ -1145,23 +1227,23 @@ public:
     RImageView(RImageView&&) = delete;
     RImageView& operator=(RImageView&&) = delete;
 
-	/** @brief 返回不可变 View 描述。 @return 创建描述。 */
+	/** @brief 返回不可变 View 描述.  @return 创建描述.  */
 	[[nodiscard]] const Descriptor_t& getDescriptor() const noexcept
     {
         return Descriptor;
     }
 
-	/** @brief 返回被观察的 Image 并保持其生命周期。 @return Image 引用。 */
+	/** @brief 返回被观察的 Image 并保持其生命周期.  @return Image 引用.  */
 	[[nodiscard]] const std::shared_ptr<RImage>& getImage() const noexcept
     {
         return Descriptor.Image;
     }
 
-	/** @brief 返回所属设备。 @return 创建此 View 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 View 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 查询 View 是否有效。 @return 有效时为 true。 */
+	/** @brief 查询 View 是否有效.  @return 有效时为 true.  */
     [[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
     [[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
@@ -1201,15 +1283,15 @@ public:
 	RImage(RImage&&) = delete;
 	RImage& operator=(RImage&&) = delete;
 
-	/** @brief 返回不可变 Image 描述。 @return 创建描述。 */
+	/** @brief 返回不可变 Image 描述.  @return 创建描述.  */
 	[[nodiscard]] const Descriptor_t& getDescriptor() const noexcept { return Descriptor; }
-	/** @brief 返回所属设备。 @return 创建此 Image 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 Image 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 查询底层 Image 是否有效。 @return 有效时为 true。 */
+	/** @brief 查询底层 Image 是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 查询非交换链 Image 是否已绑定内存。 @return 可访问内存时为 true。 */
+	/** @brief 查询非交换链 Image 是否已绑定内存.  @return 可访问内存时为 true.  */
 	[[nodiscard]] virtual bool isMemoryBound() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
@@ -1285,14 +1367,14 @@ struct ImageBarrier
 	std::optional<ECommandQueueType> DestinationQueue;
 };
 
-/** @brief 对所有内存访问建立顺序，不包含资源布局转换。 */
+/** @brief 对所有内存访问建立顺序，不包含资源布局转换.  */
 struct GlobalBarrier
 {
 	EResourceState Before { EResourceState::Common };
 	EResourceState After { EResourceState::Common };
 };
 
-/** @brief Buffer 子区间的可见性与可选队列所有权转换。 */
+/** @brief Buffer 子区间的可见性与可选队列所有权转换.  */
 struct BufferBarrier
 {
 	std::shared_ptr<RBuffer> Buffer;
@@ -1396,10 +1478,10 @@ struct RenderingSignature
 };
 
 /**
- * @brief 判断 Dynamic Rendering 附件签名是否兼容。
+ * @brief 判断 Dynamic Rendering 附件签名是否兼容. 
  *
  * Load/Store/Clear、实际 ImageView、RenderArea 和 Resolve 目标不影响 Pipeline
- * 兼容性。所有未使用颜色槽必须被规范化为 EFormat::Undefined。
+ * 兼容性. 所有未使用颜色槽必须被规范化为 EFormat::Undefined. 
  */
 [[nodiscard]] constexpr bool isRenderingCompatible(
 	const RenderingSignature& PipelineSignature,
@@ -1408,7 +1490,7 @@ struct RenderingSignature
 	return PipelineSignature == RenderingSignature;
 }
 
-/** @brief 已编译 Shader 字节码及其稳定身份。 */
+/** @brief 已编译 Shader 字节码及其稳定身份.  */
 struct ShaderDescriptor
 {
 	EShaderStage_t Stage { EShaderStage_t::Vertex };
@@ -1431,24 +1513,24 @@ public:
 	RShader(const RShader&) = delete;
 	RShader& operator=(const RShader&) = delete;
 
-	/** @brief 返回所属设备。 @return 创建此 Shader 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 Shader 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 返回唯一 Shader 阶段。 @return 阶段枚举。 */
+	/** @brief 返回唯一 Shader 阶段.  @return 阶段枚举.  */
 	[[nodiscard]] virtual EShaderStage_t getStage() const noexcept = 0;
-	/** @brief 返回稳定内容标识。 @return 用于语义缓存的哈希。 */
+	/** @brief 返回稳定内容标识.  @return 用于语义缓存的哈希.  */
 	[[nodiscard]] virtual uint64_t getContentHash() const noexcept = 0;
-	/** @brief 返回入口点名称。 @return 创建时保存的入口点。 */
+	/** @brief 返回入口点名称.  @return 创建时保存的入口点.  */
 	[[nodiscard]] virtual const std::string& getEntryPoint() const noexcept = 0;
-	/** @brief 查询模块是否有效。 @return 有效时为 true。 */
+	/** @brief 查询模块是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
 	RShader() = default;
 };
 
-/** @brief Descriptor/Bind Group Layout 中的一项资源声明。 */
+/** @brief Descriptor/Bind Group Layout 中的一项资源声明.  */
 struct BindGroupLayoutEntry
 {
 	uint32_t Binding { 0 };
@@ -1475,17 +1557,17 @@ public:
 	RBindGroupLayout(const RBindGroupLayout&) = delete;
 	RBindGroupLayout& operator=(const RBindGroupLayout&) = delete;
 
-	/** @brief 返回所属设备。 @return 创建此 Layout 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 Layout 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 返回兼容键的加速哈希。 @return 64 位哈希；不能单独证明兼容。 */
+	/** @brief 返回兼容键的加速哈希.  @return 64 位哈希；不能单独证明兼容.  */
 	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
-	/** @brief 返回规范化完整兼容键。 @return 在对象生命周期内有效的字节视图。 */
+	/** @brief 返回规范化完整兼容键.  @return 在对象生命周期内有效的字节视图.  */
 	[[nodiscard]] virtual std::span<const std::byte> getCompatibilityKey() const noexcept = 0;
-	/** @brief 返回按 Binding 规范化的条目。 @return 只读条目视图。 */
+	/** @brief 返回按 Binding 规范化的条目.  @return 只读条目视图.  */
 	[[nodiscard]] virtual std::span<const BindGroupLayoutEntry> getEntries() const noexcept = 0;
-	/** @brief 查询 Layout 是否有效。 @return 有效时为 true。 */
+	/** @brief 查询 Layout 是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
@@ -1507,7 +1589,7 @@ struct TextureBinding
 	EDescriptorImageLayout Layout { EDescriptorImageLayout::ShaderReadOnly };
 };
 
-/** @brief 带格式解释的 Buffer 区间，用于 Uniform/Storage Texel Buffer。 */
+/** @brief 带格式解释的 Buffer 区间，用于 Uniform/Storage Texel Buffer.  */
 struct TexelBufferBinding
 {
 	std::shared_ptr<RBuffer> Buffer;
@@ -1562,7 +1644,7 @@ struct BindGroupDescriptor
 	std::string DebugName;
 };
 
-/** @brief 一个已写入具体资源、创建后不可变的资源绑定组。 */
+/** @brief 一个已写入具体资源、创建后不可变的资源绑定组.  */
 class RBindGroup
 {
 public:
@@ -1570,13 +1652,13 @@ public:
 	RBindGroup(const RBindGroup&) = delete;
 	RBindGroup& operator=(const RBindGroup&) = delete;
 
-	/** @brief 返回所属设备。 @return 创建此 BindGroup 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 BindGroup 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 返回资源 ABI Layout。 @return 保持生命周期的 Layout。 */
+	/** @brief 返回资源 ABI Layout.  @return 保持生命周期的 Layout.  */
 	[[nodiscard]] virtual const std::shared_ptr<RBindGroupLayout>& getLayout() const noexcept = 0;
-	/** @brief 查询描述符组是否有效。 @return 有效时为 true。 */
+	/** @brief 查询描述符组是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
@@ -1697,7 +1779,7 @@ struct AccelerationStructureBuildDescriptor
 	DeviceSizeType ScratchOffset { 0 };
 };
 
-/** @brief 光线追踪加速结构的后端无关句柄接口。 */
+/** @brief 光线追踪加速结构的后端无关句柄接口.  */
 class RAccelerationStructure
 {
 public:
@@ -1705,11 +1787,11 @@ public:
 	RAccelerationStructure(const RAccelerationStructure&) = delete;
 	RAccelerationStructure& operator=(const RAccelerationStructure&) = delete;
 
-	/** @brief 返回所属设备。 @return 创建此加速结构的设备。 */
+	/** @brief 返回所属设备.  @return 创建此加速结构的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 查询底层加速结构是否有效。 @return 有效时为 true。 */
+	/** @brief 查询底层加速结构是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 	/** @brief Returns the address usable in instance/build records. @return Nonzero address when supported and valid; otherwise zero. */
 	[[nodiscard]] virtual DeviceAddress getDeviceAddress() const noexcept { return 0; }
@@ -1737,7 +1819,7 @@ struct PipelineLayoutDescriptor
 };
 
 /**
- * @brief 描述 Shader 可访问资源的不可变 Pipeline ABI。
+ * @brief 描述 Shader 可访问资源的不可变 Pipeline ABI. 
  *
  * 例如：
  *  Set 0:
@@ -1760,25 +1842,25 @@ public:
 	RPipelineLayout(const RPipelineLayout&) = delete;
 	RPipelineLayout& operator=(const RPipelineLayout&) = delete;
 
-	/** @brief 返回所属设备。 @return 创建此 Layout 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 Layout 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 返回完整 ABI 键的加速哈希。 @return 64 位哈希；命中后仍须比较完整键。 */
+	/** @brief 返回完整 ABI 键的加速哈希.  @return 64 位哈希；命中后仍须比较完整键.  */
 	[[nodiscard]] virtual uint64_t getCompatibilityHash() const noexcept = 0;
-	/** @brief 返回规范化完整 ABI 键。 @return 在对象生命周期内有效的字节视图。 */
+	/** @brief 返回规范化完整 ABI 键.  @return 在对象生命周期内有效的字节视图.  */
 	[[nodiscard]] virtual std::span<const std::byte> getCompatibilityKey() const noexcept = 0;
-	/** @brief 返回 BindGroup Layout 数量。 @return 连续 Group 槽位数。 */
+	/** @brief 返回 BindGroup Layout 数量.  @return 连续 Group 槽位数.  */
 	[[nodiscard]] virtual uint32_t getBindGroupLayoutCount() const noexcept = 0;
-	/** @brief 返回指定 Group 的 Layout。 @param GroupIndex 小于 getBindGroupLayoutCount() 的索引。 @return Layout 引用。 */
+	/** @brief 返回指定 Group 的 Layout.  @param GroupIndex 小于 getBindGroupLayoutCount() 的索引.  @return Layout 引用.  */
 	[[nodiscard]] virtual const std::shared_ptr<RBindGroupLayout>& getBindGroupLayout(
 		uint32_t GroupIndex) const = 0;
-	/** @brief 判断一次 Push Constant 更新是否被 ABI 覆盖。 @param Stages 目标阶段。 @param Offset 字节偏移。 @param Size 字节数。 @return 完整覆盖时为 true。 */
+	/** @brief 判断一次 Push Constant 更新是否被 ABI 覆盖.  @param Stages 目标阶段.  @param Offset 字节偏移.  @param Size 字节数.  @return 完整覆盖时为 true.  */
 	[[nodiscard]] virtual bool supportsPushConstants(
 		EShaderStage Stages,
 		uint32_t Offset,
 		uint32_t Size) const noexcept = 0;
-	/** @brief 查询 Layout 是否有效。 @return 有效时为 true。 */
+	/** @brief 查询 Layout 是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
@@ -1917,10 +1999,10 @@ struct PipelineCompileOptions
 };
 
 /**
- * @brief Graphics Pipeline 的完整 owning 描述符。
+ * @brief Graphics Pipeline 的完整 owning 描述符. 
  *
- * 描述符可安全复制或移动到后台线程。空 Shader 字段表示对应 Stage 未使用。
- * Vertex 与 Mesh 路径互斥；Task Shader 只能与 Mesh Shader 一起使用。
+ * 描述符可安全复制或移动到后台线程. 空 Shader 字段表示对应 Stage 未使用. 
+ * Vertex 与 Mesh 路径互斥；Task Shader 只能与 Mesh Shader 一起使用. 
  */
 struct GraphicsPipelineDescriptor
 {
@@ -2008,22 +2090,22 @@ struct TraceRaysDescriptor
 /**
  * @brief 后端 Pipeline 二进制缓存, 用于加速编译.
  *
- * serialize() 返回的字节只保证可交给同一 RHI 版本、后端、设备和兼容驱动。
- * 磁盘层仍必须附加并校验 RHI/Schema/设备/驱动版本头。
+ * serialize() 返回的字节只保证可交给同一 RHI 版本、后端、设备和兼容驱动. 
+ * 磁盘层仍必须附加并校验 RHI/Schema/设备/驱动版本头. 
  */
 class RPipelineCache
 {
 public:
 	virtual ~RPipelineCache() = default;
-	/** @brief 合并同设备兼容缓存。 @param Sources 源缓存；调用返回后可释放。 */
+	/** @brief 合并同设备兼容缓存.  @param Sources 源缓存；调用返回后可释放.  */
 	virtual void merge(std::span<const std::shared_ptr<RPipelineCache>> Sources) = 0;
-	/** @brief 返回所属设备。 @return 创建此缓存的设备。 */
+	/** @brief 返回所属设备.  @return 创建此缓存的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 序列化驱动缓存字节。 @return 仅适用于兼容设备/驱动的二进制。 */
+	/** @brief 序列化驱动缓存字节.  @return 仅适用于兼容设备/驱动的二进制.  */
 	[[nodiscard]] virtual std::vector<std::byte> serialize() const = 0;
-	/** @brief 查询缓存对象是否有效。 @return 有效时为 true。 */
+	/** @brief 查询缓存对象是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 };
 
@@ -2042,32 +2124,32 @@ public:
 	RPipeline(const RPipeline&) = delete;
 	RPipeline& operator=(const RPipeline&) = delete;
 
-	/** @brief 返回所属设备。 @return 创建此 Pipeline 的设备。 */
+	/** @brief 返回所属设备.  @return 创建此 Pipeline 的设备.  */
 	[[nodiscard]] virtual RDevice& getDevice() const noexcept = 0;
-	/** @brief 返回执行绑定点类型。 @return Graphics、Compute 或 RayTracing。 */
+	/** @brief 返回执行绑定点类型.  @return Graphics、Compute 或 RayTracing.  */
 	[[nodiscard]] virtual EPipelineType getType() const noexcept = 0;
-	/** @brief 返回资源 ABI。 @return 保持生命周期的 PipelineLayout。 */
+	/** @brief 返回资源 ABI.  @return 保持生命周期的 PipelineLayout.  */
 	[[nodiscard]] virtual const std::shared_ptr<RPipelineLayout>& getLayout() const noexcept = 0;
-	/** @brief 返回 Graphics 附件兼容签名。 @return 非 Graphics 类型返回 nullptr。 */
+	/** @brief 返回 Graphics 附件兼容签名.  @return 非 Graphics 类型返回 nullptr.  */
 	[[nodiscard]] virtual const RenderingSignature* getRenderingSignature() const noexcept = 0;
-	/** @brief 返回 Draw 前必须初始化的动态状态集合。 @return 动态状态位。 */
+	/** @brief 返回 Draw 前必须初始化的动态状态集合.  @return 动态状态位.  */
 	[[nodiscard]] virtual EDynamicStates getDynamicStates() const noexcept = 0;
-	/** @brief 查询 Graphics Pipeline 是否使用 Mesh 路径。 @return 使用 Mesh Shader 时为 true。 */
+	/** @brief 查询 Graphics Pipeline 是否使用 Mesh 路径.  @return 使用 Mesh Shader 时为 true.  */
 	[[nodiscard]] virtual bool usesMeshShaders() const noexcept = 0;
-	/** @brief 返回语义键的加速哈希。 @return 稳定 64 位哈希；不能单独证明相等。 */
+	/** @brief 返回语义键的加速哈希.  @return 稳定 64 位哈希；不能单独证明相等.  */
 	[[nodiscard]] virtual uint64_t getCacheKey() const noexcept = 0;
-	/** @brief 返回诊断名称。 @return 创建时保存的名称。 */
+	/** @brief 返回诊断名称.  @return 创建时保存的名称.  */
 	[[nodiscard]] virtual const std::string& getDebugName() const noexcept = 0;
-	/** @brief 查询底层可执行对象是否有效。 @return 有效时为 true。 */
+	/** @brief 查询底层可执行对象是否有效.  @return 有效时为 true.  */
 	[[nodiscard]] virtual bool isValid() const noexcept = 0;
-	/** @brief 返回非 owning 后端句柄。 @return 不可用时为 nullptr。 */
+	/** @brief 返回非 owning 后端句柄.  @return 不可用时为 nullptr.  */
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 
 protected:
 	RPipeline() = default;
 };
 
-/** @brief CPU 可等待的单次提交完成标记。 */
+/** @brief CPU 可等待的单次提交完成标记.  */
 class RFence
 {
 public:
@@ -2084,7 +2166,7 @@ public:
 	[[nodiscard]] virtual void* getNativeHandle() const noexcept = 0;
 };
 
-/** @brief GPU 同步原语；Timeline=false 时 Value 参数被忽略。 */
+/** @brief GPU 同步原语；Timeline=false 时 Value 参数被忽略.  */
 class RSemaphore
 {
 public:
@@ -2451,7 +2533,7 @@ struct AcquireResult
 	uint64_t Generation { 0 };
 };
 
-/** @brief 可重建的呈现图像集合；提交和呈现由 RQueue 负责。 */
+/** @brief 可重建的呈现图像集合；提交和呈现由 RQueue 负责.  */
 class RSwapchain
 {
 public:
@@ -2498,39 +2580,102 @@ public:
 	/** @brief Destroys the device interface after all child objects have released ownership. */
 	virtual ~RDevice() = default;
 
-	/** @brief Creates a buffer. @param Desc Valid immutable descriptor. @return Resource, or nullptr when unsupported, invalid, out of memory, or device-lost. */
-	virtual std::shared_ptr<RBuffer> createBuffer(const BufferDescriptor& Desc) = 0;
-	/** @brief Creates an image. @param Desc Immutable dimensions, format, usage, and memory policy. @return Resource, or nullptr on invalid/unsupported/out-of-memory/device-lost. */
+	/** 
+     * @brief Creates a buffer. 
+     * @param Desc Valid immutable descriptor. 
+     * @return Resource, or nullptr when unsupported, invalid, out of memory, or device-lost. 
+     */
+	virtual std::shared_ptr<RBuffer> createBuffer(const RBuffer::Descriptor_t& Desc) = 0;
+	
+    /** 
+     * @brief Creates an image. 
+     * @param Desc Immutable dimensions, format, usage, and memory policy. 
+     * @return Resource, or nullptr on invalid/unsupported/out-of-memory/device-lost. 
+     */
 	virtual std::shared_ptr<RImage> createImage(const RImage::Descriptor_t& Desc) = 0;
-	/** @brief Creates an image subresource view. @param Desc Image, interpretation, and range. @return View, or nullptr when incompatible. */
+	
+    /** 
+     * @brief Creates an image subresource view. 
+     * @param Desc Image, interpretation, and range. 
+     * @return View, or nullptr when incompatible. 
+     */
     virtual std::shared_ptr<RImageView> createImageView(const RImageView::Descriptor_t& Desc) = 0;
-	/** @brief Creates immutable sampling state. @param Desc Filtering/addressing policy. @return Sampler, or nullptr when unsupported. */
-	virtual std::shared_ptr<RSampler> createSampler(const SamplerDescriptor& Desc = {}) = 0;
-	/** @brief Creates a compiled shader module. @param Desc Bytecode, stage, entry point, and identity. @return Shader, or nullptr on validation/backend failure. */
+	
+    /** 
+     * @brief Creates immutable sampling state. 
+     * @param Desc Filtering/addressing policy. 
+     * @return Sampler, or nullptr when unsupported. 
+     */
+	virtual std::shared_ptr<RSampler> createSampler(const RSampler::Descriptor_t& Desc = {}) = 0;
+	
+    /** 
+     * @brief Creates a compiled shader module. 
+     * @param Desc Bytecode, stage, entry point, and identity. 
+     * @return Shader, or nullptr on validation/backend failure. 
+     */
 	virtual std::shared_ptr<RShader> createShader(const ShaderDescriptor& Desc) = 0;
-	/** @brief Creates a bind-group ABI declaration. @param Desc Entries to normalize and validate. @return Layout, or nullptr on invalid/unsupported declarations. */
+	
+    /** 
+     * @brief Creates a bind-group ABI declaration. 
+     * @param Desc Entries to normalize and validate. 
+     * @return Layout, or nullptr on invalid/unsupported declarations. 
+     */
 	virtual std::shared_ptr<RBindGroupLayout> createBindGroupLayout(
 		const BindGroupLayoutDescriptor& Desc) = 0;
-	/** @brief Creates an immutable populated bind group. @param Desc Layout and complete resource writes. @return Group, or nullptr on incompatibility. */
+    /** 
+     * @brief Creates an immutable populated bind group. 
+     * @param Desc Layout and complete resource writes. 
+     * @return Group, or nullptr on incompatibility. 
+     */
 	virtual std::shared_ptr<RBindGroup> createBindGroup(
 		const BindGroupDescriptor& Desc) = 0;
-	/** @brief Creates a pipeline resource ABI. @param Desc Ordered group layouts and push-constant ranges. @return Layout, or nullptr on limit/overlap failure. */
+    /** 
+     * @brief Creates a pipeline resource ABI. 
+     * @param Desc Ordered group layouts and push-constant ranges. 
+     * @return Layout, or nullptr on limit/overlap failure. 
+     */
 	virtual std::shared_ptr<RPipelineLayout> createPipelineLayout(
 		const PipelineLayoutDescriptor& Desc) = 0;
-	/** @brief Creates a reusable backend pipeline cache. @param Desc Optional compatible initial bytes. @return Cache, or nullptr when initial data is rejected. */
+    /** 
+     * @brief Creates a reusable backend pipeline cache. 
+     * @param Desc Optional compatible initial bytes. 
+     * @return Cache, or nullptr when initial data is rejected. 
+     */
 	virtual std::shared_ptr<RPipelineCache> createPipelineCache(
 		const PipelineCacheDescriptor& Desc = {}) = 0;
-	/** @brief Creates a graphics pipeline. @param Desc Complete static/dynamic state and rendering signature. @return Pipeline, or nullptr when compilation/validation fails. */
+    /** 
+     * @brief Creates a graphics pipeline. 
+     * @param Desc Complete static/dynamic state and rendering signature. 
+     * @return Pipeline, or nullptr when compilation/validation fails. 
+     */
 	virtual std::shared_ptr<RPipeline> createGraphicsPipeline(
 		const GraphicsPipelineDescriptor& Desc) = 0;
-	/** @brief Creates a compute pipeline. @param Desc Compute stage, layout, and compile policy. @return Pipeline, or nullptr when compilation/validation fails. */
+    /** 
+     * @brief Creates a compute pipeline. 
+     * @param Desc Compute stage, layout, and compile policy. 
+     * @return Pipeline, or nullptr when compilation/validation fails. 
+     */
 	virtual std::shared_ptr<RPipeline> createComputePipeline(
 		const ComputePipelineDescriptor& Desc) = 0;
-	/** @brief Creates an optional ray-tracing pipeline. @param Desc Stages, groups, layout, and recursion depth. @return Pipeline, or nullptr unless RayTracingPipeline is supported and all limits are met. */
+    /** 
+     * @brief Creates an optional ray-tracing pipeline. 
+     * @param Desc Stages, groups, layout, and recursion depth. 
+     * @return Pipeline, or nullptr unless RayTracingPipeline is supported and all limits are met. 
+     */
 	virtual std::shared_ptr<RPipeline> createRayTracingPipeline(const RayTracingPipelineDescriptor& Desc) { (void)Desc; return {}; }
-	/** @brief Creates acceleration-structure storage interpretation. @param Desc Type and valid aligned storage range. @return Wrapper, or nullptr unless AccelerationStructure is supported. */
+    /** 
+     * @brief Creates acceleration-structure storage interpretation. 
+     * @param Desc Type and valid aligned storage range. 
+     * @return Wrapper, or nullptr unless AccelerationStructure is supported. 
+     */
 	virtual std::shared_ptr<RAccelerationStructure> createAccelerationStructure(const AccelerationStructureDescriptor& Desc) { (void)Desc; return {}; }
-	/** @brief Queries allocation and scratch sizes for acceleration-structure geometry. @param Type Bottom- or top-level target. @param Flags Build policy. @param Geometries Geometry descriptions and maximum primitive counts. @return Nonzero requirements when supported/valid; all-zero otherwise. */
+    /** 
+     * @brief Queries allocation and scratch sizes for acceleration-structure geometry. 
+     * @param Type Bottom- or top-level target. 
+     * @param Flags Build policy. 
+     * @param Geometries Geometry descriptions and maximum primitive counts. 
+     * @return Nonzero requirements when supported/valid; all-zero otherwise. 
+     */
 	[[nodiscard]] virtual AccelerationStructureBuildSizes getAccelerationStructureBuildSizes(
 		EAccelerationStructureType Type,
 		EAccelerationStructureBuildFlags Flags,
@@ -2538,45 +2683,106 @@ public:
 	{
 		(void)Type; (void)Flags; (void)Geometries; return {};
 	}
-	/** @brief Retrieves opaque shader-group handles for SBT construction. @param Pipeline Valid ray-tracing pipeline. @param FirstGroup First group. @param GroupCount Number of groups. @return Packed handles using DeviceLimits::ShaderGroupHandleSize, or empty when unsupported/invalid. */
+    /** 
+     * @brief Retrieves opaque shader-group handles for SBT construction. 
+     * @param Pipeline Valid ray-tracing pipeline. 
+     * @param FirstGroup First group. 
+     * @param GroupCount Number of groups. 
+     * @return Packed handles using DeviceLimits::ShaderGroupHandleSize, or empty when unsupported/invalid. 
+     */
 	[[nodiscard]] virtual std::vector<std::byte> getRayTracingShaderGroupHandles(
 		const std::shared_ptr<RPipeline>& Pipeline, uint32_t FirstGroup, uint32_t GroupCount) const
 	{
 		(void)Pipeline; (void)FirstGroup; (void)GroupCount; return {};
 	}
-	/** @brief Creates a command list. @param Desc Queue class, level, reuse policy, and optional rendering inheritance. @return List, or nullptr when secondary/inheritance features are unsupported. */
+    /** 
+     * @brief Creates a command list. 
+     * @param Desc Queue class, level, reuse policy, and optional rendering inheritance. 
+     * @return List, or nullptr when secondary/inheritance features are unsupported. 
+     */
 	virtual std::shared_ptr<RCommandList> createCommandList(
 		const CommandListDescriptor& Desc = {}) = 0;
-	/** @brief Creates presentation resources for the initialized surface. @param Desc Format/mode/HDR preferences and dimensions. @return Swapchain, or nullptr for unavailable/lost surface or unsupported requirements. */
+    /** 
+     * @brief Creates presentation resources for the initialized surface. 
+     * @param Desc Format/mode/HDR preferences and dimensions. 
+     * @return Swapchain, or nullptr for unavailable/lost surface or unsupported requirements. 
+     */
 	virtual std::shared_ptr<RSwapchain> createSwapchain(const SwapchainDescriptor& Desc) = 0;
-	/** @brief Retrieves a device-owned queue. @param Type Required queue capability. @return Queue, or nullptr when unavailable. */
+    /** 
+     * @brief Retrieves a device-owned queue. 
+     * @param Type Required queue capability. 
+     * @return Queue, or nullptr when unavailable. 
+     */
 	virtual std::shared_ptr<RQueue> getQueue(ECommandQueueType Type) = 0;
-	/** @brief Creates a CPU-waitable fence. @param Signaled Initial state. @return Fence, or nullptr on failure. */
+    /** 
+     * @brief Creates a CPU-waitable fence. 
+     * @param Signaled Initial state. 
+     * @return Fence, or nullptr on failure. 
+     */
 	virtual std::shared_ptr<RFence> createFence(bool Signaled = false) = 0;
-	/** @brief Creates a binary GPU semaphore. @return Semaphore, or nullptr on failure. */
+	/** 
+     * @brief Creates a binary GPU semaphore. 
+     * @return Semaphore, or nullptr on failure. 
+     */
 	virtual std::shared_ptr<RSemaphore> createSemaphore() = 0;
-	/** @brief Creates a monotonic timeline semaphore. @param InitialValue Initial completed value. @return Semaphore, or nullptr unless TimelineSemaphore is supported. */
+	/** 
+     * @brief Creates a monotonic timeline semaphore. 
+     * @param InitialValue Initial completed value. 
+     * @return Semaphore, or nullptr unless TimelineSemaphore is supported. 
+     */
 	virtual std::shared_ptr<RSemaphore> createTimelineSemaphore(uint64_t InitialValue = 0) = 0;
-	/** @brief Creates fixed query storage. @param Desc Type/count/statistics mask. @return Pool, or nullptr unless the selected query capability is supported. */
+	/** 
+     * @brief Creates fixed query storage. 
+     * @param Desc Type/count/statistics mask. 
+     * @return Pool, or nullptr unless the selected query capability is supported. 
+     */
 	virtual std::shared_ptr<RQueryPool> createQueryPool(const QueryPoolDescriptor& Desc) = 0;
-	/** @brief Queries format operations. @param Format Format to inspect. @return Empty masks for undefined/unsupported formats. */
+	/** 
+     * @brief Queries format operations. 
+     * @param Format Format to inspect. 
+     * @return Empty masks for undefined/unsupported formats. 
+     */
 	[[nodiscard]] virtual FormatCapabilities getFormatCapabilities(EFormat Format) const = 0;
-	/** @brief Queries current presentation surface capabilities. @return Supported limits/formats/modes, or std::nullopt when surface status reporting is unavailable or the surface is lost. */
+	/** 
+     * @brief Queries current presentation surface capabilities. 
+     * @return Supported limits/formats/modes, or std::nullopt when surface status reporting is unavailable or the surface is lost. 
+     */
 	[[nodiscard]] virtual std::optional<SwapchainCapabilities> getSwapchainCapabilities() const { return std::nullopt; }
-	/** @brief Creates the legacy texture abstraction. @return Texture pointer owned according to legacy API, or nullptr when unavailable. */
+	/** 
+     * @brief Creates the legacy texture abstraction. 
+     * @return Texture pointer owned according to legacy API, or nullptr when unavailable. 
+     */
 	virtual RTexture* createTexture() = 0;
-	/** @brief Allocates legacy device memory. @param Requirements Size/alignment/type constraints. @param Property Required memory properties. @return Allocation, or nullptr on failure. */
+	/** 
+     * @brief Allocates legacy device memory. 
+     * @param Requirements Size/alignment/type constraints. 
+     * @param Property Required memory properties. 
+     * @return Allocation, or nullptr on failure. 
+     */
 	virtual std::shared_ptr<DeviceMemory> allocateMemory(
 		MemoryRequirements Requirements,
 		EMemoryProperty Property) = 0;
-	/** @brief Allocates memory with required/preferred properties and modern metadata. @param Desc Allocation constraints and policy. @return Allocation, or nullptr if requirements cannot be satisfied; default bridges to the legacy allocator. */
+	/** 
+     * @brief Allocates memory with required/preferred properties and modern metadata. 
+     * @param Desc Allocation constraints and policy. 
+     * @return Allocation, or nullptr if requirements cannot be satisfied; default bridges to the legacy allocator. 
+     */
 	virtual std::shared_ptr<DeviceMemory> allocateMemory(const MemoryAllocationDescriptor& Desc)
 	{
 		return allocateMemory(Desc.Requirements, Desc.RequiredProperties);
 	}
-	/** @brief Releases an allocation after the caller has externally proven GPU idleness. @param Memory Allocation to release; null is a no-op. */
+	/** 
+     * @brief Releases an allocation after the caller has externally proven GPU idleness. 
+     * @param Memory Allocation to release; null is a no-op. 
+     */
 	virtual void freeMemory(std::shared_ptr<DeviceMemory> Memory) = 0;
-	/** @brief Defers the final shared ownership release until a timeline value completes. @param Resource Type-erased RHI object ownership. @param CompletionSemaphore Timeline semaphore from this device. @param CompletionValue Value proving all resource use complete. @return True when queued; false when unsupported/invalid, in which case caller retains ownership. */
+	/** 
+     * @brief Defers the final shared ownership release until a timeline value completes. 
+     * @param Resource Type-erased RHI object ownership. 
+     * @param CompletionSemaphore Timeline semaphore from this device. 
+     * @param CompletionValue Value proving all resource use complete. 
+     * @return True when queued; false when unsupported/invalid, in which case caller retains ownership. 
+     */
 	[[nodiscard]] virtual bool deferRelease(
 		std::shared_ptr<void> Resource,
 		const std::shared_ptr<RSemaphore>& CompletionSemaphore,
@@ -2584,18 +2790,36 @@ public:
 	{
 		(void)Resource; (void)CompletionSemaphore; (void)CompletionValue; return false;
 	}
-	/** @brief Polls and destroys deferred objects whose completion points have passed; never waits. */
+	/** 
+     * @brief Polls and destroys deferred objects whose completion points have passed; never waits. 
+     */
 	virtual void collectDeferredReleases() {}
 
-	/** @brief Blocks until all device queues are idle or device loss is observed. */
+	/** 
+     * @brief Blocks until all device queues are idle or device loss is observed. 
+     */
 	virtual void waitIdle() = 0;
-	/** @brief Returns the non-owning backend device handle. @return Handle, or nullptr after loss. */
+	
+    /** 
+     * @brief Returns the non-owning backend device handle. 
+     * @return Handle, or nullptr after loss. 
+     */
 	virtual void* getNativeHandle() const = 0;
-	/** @brief Returns immutable numeric limits. @return Limits valid for this device lifetime. */
+	
+    /** 
+     * @brief Returns immutable numeric limits. 
+     * @return Limits valid for this device lifetime. 
+     */
 	[[nodiscard]] virtual const DeviceLimits& getLimits() const noexcept = 0;
-	/** @brief Returns immutable optional capabilities. @return Features valid for this device lifetime. */
+	/** 
+     * @brief Returns immutable optional capabilities. 
+     * @return Features valid for this device lifetime. 
+     */
 	[[nodiscard]] virtual const DeviceFeatures& getFeatures() const noexcept = 0;
-	/** @brief Reports device health. @return Ready or terminal loss/removal/reset state; default Ready preserves legacy backends. */
+	/** 
+     * @brief Reports device health. 
+     * @return Ready or terminal loss/removal/reset state; default Ready preserves legacy backends. 
+     */
 	[[nodiscard]] virtual EDeviceStatus getStatus() const noexcept { return EDeviceStatus::Ready; }
 
 protected:

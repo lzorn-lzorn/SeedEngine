@@ -4,7 +4,7 @@
 // ============================================================================
 //
 // 基于 Dmitry Vyukov 的经典 Bounded MPMC Queue 算法实现.
-// 适用于多线程间高效、无锁地传递消息.
+// 适用于多线程间高效, 无锁地传递消息.
 //
 // ■ 核心特性:
 //   - 完全无锁 (lock-free), 基于 CAS (Compare-And-Swap) 原子操作实现同步
@@ -41,7 +41,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include "common/Common.hpp"
+#include <core/common/Common.hpp>
 
 namespace core
 {
@@ -236,8 +236,8 @@ public:
 		{
 			size_t idx = (deq + i) & Mask;
 			// 注意：数据读取必须发生在序列号检查之后，这里简单取快照，
-			// 可能读到正在写入的数据，但这是“近似”快照，可接受。
-			// 如果要求严格一致性，需加额外逻辑。
+			// 可能读到正在写入的数据，但这是“近似”快照，可接受. 
+			// 如果要求严格一致性，需加额外逻辑. 
 			result.push_back(Buffer[idx].Data);
 		}
 		return result;

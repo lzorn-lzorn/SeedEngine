@@ -613,7 +613,7 @@ inline LinearColor3D fromVector(const Vec3D<float>& V) noexcept {
 }
 
 /**
- * @brief 四维颜色（线性空间，HDR 支持），用于合成、纹理、材质属性等
+ * @brief 四维颜色（线性空间，HDR 支持），用于合成, 纹理, 材质属性等
  * @note 包含 Alpha 通道，语义上为 (r, g, b, a)
  * @note 底层基于 Vec4D<float>，复用向量运算，屏蔽几何接口
  */

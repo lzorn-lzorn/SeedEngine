@@ -19,14 +19,12 @@ public:
 	 * @param Desc Immutable buffer description.
 	 * @return A fully bound Vulkan buffer.
 	 */
-	[[nodiscard]] static std::shared_ptr<VulkanBuffer> create(
-		VulkanDevice& Device,
-		const BufferDescriptor& Desc);
+	[[nodiscard]] static std::shared_ptr<VulkanBuffer> create(VulkanDevice& Device, const Descriptor_t& Desc);
 
 	~VulkanBuffer() override = default;
 
 	[[nodiscard]] RDevice& getDevice() const noexcept override;
-	[[nodiscard]] const BufferDescriptor& getDescriptor() const noexcept override { return Descriptor; }
+	[[nodiscard]] const Descriptor_t& getDescriptor() const noexcept override { return Descriptor; }
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(Buffer); }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
 	[[nodiscard]] DeviceAddress getDeviceAddress() const noexcept override;
@@ -38,14 +36,10 @@ public:
 	[[nodiscard]] vk::Buffer getVkBuffer() const noexcept { return Buffer.get(); }
 
 private:
-	VulkanBuffer(
-		VulkanDevice& Device,
-		BufferDescriptor Desc,
-		std::shared_ptr<DeviceMemory> Memory,
-		vk::UniqueBuffer Buffer);
+	VulkanBuffer(VulkanDevice& Device, Descriptor_t Desc, std::shared_ptr<DeviceMemory> Memory, vk::UniqueBuffer Buffer);
 
 	VulkanDevice* Device { nullptr };
-	BufferDescriptor Descriptor;
+	Descriptor_t Descriptor;
 	// Declared before Buffer so the Vulkan object is destroyed before its bound memory.
 	std::shared_ptr<DeviceMemory> Memory;
 	vk::UniqueBuffer Buffer;

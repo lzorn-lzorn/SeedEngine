@@ -110,7 +110,7 @@ namespace
 }
 }
 
-std::shared_ptr<RBuffer> VulkanDevice::createBuffer(const BufferDescriptor& Desc)
+std::shared_ptr<RBuffer> VulkanDevice::createBuffer(const RBuffer::Descriptor_t& Desc)
 {
 	requireReady();
 	return VulkanBuffer::create(*this, Desc);
@@ -129,7 +129,7 @@ std::shared_ptr<RImageView> VulkanDevice::createImageView(
 	return VulkanImageView::create(*this, Desc);
 }
 
-std::shared_ptr<RSampler> VulkanDevice::createSampler(const SamplerDescriptor& Desc)
+std::shared_ptr<RSampler> VulkanDevice::createSampler(const RSampler::Descriptor_t& Desc)
 {
 	requireReady();
 	return std::make_shared<VulkanSampler>(*this, Desc);

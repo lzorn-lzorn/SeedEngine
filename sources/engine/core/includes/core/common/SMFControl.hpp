@@ -13,7 +13,7 @@ struct SMF_Control_Tag
     static constexpr bool enable_move_ctor    = MoveCtor;
     static constexpr bool enable_move_assign  = MoveAssign;
 
-    // 全部使用平凡默认成员，不删除、不自定义，避免干扰类型特征
+    // 全部使用平凡默认成员，不删除, 不自定义，避免干扰类型特征
     SMF_Control_Tag() = default;
     ~SMF_Control_Tag() = default;
     SMF_Control_Tag(const SMF_Control_Tag&) = default;

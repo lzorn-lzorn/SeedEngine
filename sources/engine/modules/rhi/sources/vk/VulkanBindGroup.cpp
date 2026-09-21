@@ -45,7 +45,7 @@ bool isBufferDescriptor(EDescriptorType Type)
 		Type == EDescriptorType::ReadWriteStorageBuffer;
 }
 
-void validateBufferUsage(const BufferDescriptor& Desc, EDescriptorType Type)
+void validateBufferUsage(const RBuffer::Descriptor_t& Desc, EDescriptorType Type)
 {
 	if (Type == EDescriptorType::UniformBuffer && !Desc.Usage.has(EBufferUsage_t::Uniform))
 		throw std::invalid_argument("Uniform-buffer binding requires Uniform buffer usage.");

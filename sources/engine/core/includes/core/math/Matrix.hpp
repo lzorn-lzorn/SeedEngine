@@ -110,7 +110,7 @@ struct Matrix
         return _result;
     }
 
-    // 兼容旧 API。
+    // 兼容旧 API. 
     [[nodiscard]] static constexpr Matrix ZeroMatrix() noexcept { return zero(); }
     [[nodiscard]] static constexpr Matrix OneMatrix() noexcept { return one(); }
     [[nodiscard]] static constexpr Matrix Identity() noexcept requires (Rows == Columns) { return identity(); }

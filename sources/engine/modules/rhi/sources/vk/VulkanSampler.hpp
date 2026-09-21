@@ -17,18 +17,18 @@ public:
 	 * @param Device Device that owns the sampler.
 	 * @param Desc Sampler filtering, addressing and comparison state.
 	 */
-	VulkanSampler(VulkanDevice& Device, const SamplerDescriptor& Desc);
+	VulkanSampler(VulkanDevice& Device, const Descriptor_t& Desc);
 	~VulkanSampler() override = default;
 
 	[[nodiscard]] RDevice& getDevice() const noexcept override;
-	[[nodiscard]] const SamplerDescriptor& getDescriptor() const noexcept override { return Descriptor; }
+	[[nodiscard]] const Descriptor_t& getDescriptor() const noexcept override { return Descriptor; }
 	[[nodiscard]] bool isValid() const noexcept override { return static_cast<bool>(Sampler); }
 	[[nodiscard]] void* getNativeHandle() const noexcept override;
 	[[nodiscard]] vk::Sampler getVkSampler() const noexcept { return Sampler.get(); }
 
 private:
 	VulkanDevice* Device { nullptr };
-	SamplerDescriptor Descriptor;
+	Descriptor_t Descriptor;
 	vk::UniqueSampler Sampler;
 };
 

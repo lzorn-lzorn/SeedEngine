@@ -160,7 +160,7 @@ function(_prebuilt_error msg required)
     endif()
 endfunction()
 
-# 确保传入的 CMake 列表中没有重复项。
+# 确保传入的 CMake 列表中没有重复项. 
 function(list_assert_duplicates values)
   set(items ${values})
   set(unique_items ${items})

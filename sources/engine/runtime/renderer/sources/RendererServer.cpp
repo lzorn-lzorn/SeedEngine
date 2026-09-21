@@ -236,7 +236,7 @@ void RendererServer::runBindGroupSmokeTest()
 			rhi::EBufferUsage usage = reflected.Type == rhi::EDescriptorType::UniformBuffer
 				? rhi::EBufferUsage(rhi::EBufferUsage_t::Uniform)
 				: rhi::EBufferUsage(rhi::EBufferUsage_t::Storage);
-			auto buffer = device->createBuffer(rhi::BufferDescriptor {
+			auto buffer = device->createBuffer(rhi::RBuffer::Descriptor_t {
 				.Size = reflected.BlockSize == 0 ? 256u : reflected.BlockSize,
 				.Usage = usage,
 				.MemoryProperty = rhi::EMemoryProperty_t::DeviceLocal,
@@ -297,7 +297,7 @@ void RendererServer::runBindGroupSmokeTest()
 		resolved.BindGroups);
 	command_list->end();
 
-	auto upload_buffer = device->createBuffer(rhi::BufferDescriptor {
+	auto upload_buffer = device->createBuffer(rhi::RBuffer::Descriptor_t {
 		.Size = 256,
 		.Usage = rhi::EBufferUsage_t::TransferSrc,
 		.MemoryUsage = rhi::EMemoryUsage::CPUToGPU,
@@ -311,7 +311,7 @@ void RendererServer::runBindGroupSmokeTest()
 
 	if (device->getFeatures().BufferDeviceAddress)
 	{
-		auto address_buffer = device->createBuffer(rhi::BufferDescriptor {
+		auto address_buffer = device->createBuffer(rhi::RBuffer::Descriptor_t {
 			.Size = 256,
 			.Usage = rhi::EBufferUsage(rhi::EBufferUsage_t::Storage) |
 				rhi::EBufferUsage_t::DeviceAddress,
@@ -336,7 +336,7 @@ void RendererServer::runBindGroupSmokeTest()
 		throw std::runtime_error("Vulkan ray-tracing pipeline limits were not populated.");
 	if (features.AccelerationStructure)
 	{
-		auto storage = device->createBuffer(rhi::BufferDescriptor {
+		auto storage = device->createBuffer(rhi::RBuffer::Descriptor_t {
 			.Size = 256,
 			.Usage = rhi::EBufferUsage(rhi::EBufferUsage_t::AccelerationStructureStorage) |
 				rhi::EBufferUsage_t::DeviceAddress,

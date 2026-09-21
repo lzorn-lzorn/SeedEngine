@@ -26,11 +26,11 @@ struct PipelineManagerStatistics
 };
 
 /**
- * @brief 引擎级语义 Pipeline 缓存与有界异步编译管理器。
+ * @brief 引擎级语义 Pipeline 缓存与有界异步编译管理器. 
  *
- * Manager 在创建 Native Pipeline 前从完整、规范化 Descriptor 构造碰撞安全 Key。
- * 同一 Key 的并发请求共享一个 shared_future；驱动编译期间不持有缓存锁。
- * RDevice 由 Manager 共享持有，因此所有后台任务结束前设备不会提前销毁。
+ * Manager 在创建 Native Pipeline 前从完整, 规范化 Descriptor 构造碰撞安全 Key. 
+ * 同一 Key 的并发请求共享一个 shared_future；驱动编译期间不持有缓存锁. 
+ * RDevice 由 Manager 共享持有，因此所有后台任务结束前设备不会提前销毁. 
  */
 class PipelineManager final
 {
